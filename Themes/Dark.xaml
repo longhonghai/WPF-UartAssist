@@ -1,0 +1,67 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        暗色调色板（只放颜色与画刷，不放样式）。
+
+        运行时换肤靠替换本字典实现，所以这里每个键在 Light.xaml 里都必须存在，
+        且样式里对画刷的引用一律用 DynamicResource。
+    -->
+
+    <!-- ============ 调色板 ============ -->
+    <Color x:Key="BgColor">#FF14171F</Color>
+    <Color x:Key="PanelColor">#FF1B1F29</Color>
+    <Color x:Key="PanelAltColor">#FF212633</Color>
+    <Color x:Key="BorderColor">#FF2E3444</Color>
+    <Color x:Key="TextColor">#FFE4E8F0</Color>
+    <Color x:Key="TextDimColor">#FF8B94A8</Color>
+    <Color x:Key="AccentColor">#FF4C8DFF</Color>
+    <Color x:Key="AccentHoverColor">#FF6BA1FF</Color>
+    <Color x:Key="OnlineColor">#FF3DD68C</Color>
+    <Color x:Key="OfflineColor">#FF6C7488</Color>
+    <Color x:Key="DangerColor">#FFFF6B6B</Color>
+    <Color x:Key="WarnColor">#FFFFB020</Color>
+    <Color x:Key="LogBackgroundColor">#FF0F1218</Color>
+    <Color x:Key="LogForegroundColor">#FFCBD5E5</Color>
+    <Color x:Key="ButtonHoverColor">#FF2B3243</Color>
+    <Color x:Key="ButtonPressedColor">#FF232936</Color>
+    <Color x:Key="SelectionBgColor">#334C8DFF</Color>
+    <Color x:Key="ScrollThumbColor">#55FFFFFF</Color>
+    <Color x:Key="PrimaryTextColor">#FFFFFFFF</Color>
+    <Color x:Key="DangerBgColor">#33FF6B6B</Color>
+    <Color x:Key="DangerBorderColor">#55FF6B6B</Color>
+
+    <!-- 日志分色：接收 / 发送 / 系统 / 时间戳前缀 -->
+    <Color x:Key="LogReceiveColor">#FF4ED6A0</Color>
+    <Color x:Key="LogSendColor">#FF6BA1FF</Color>
+    <Color x:Key="LogSystemColor">#FF8B94A8</Color>
+    <Color x:Key="LogPrefixColor">#FF5C667A</Color>
+
+    <SolidColorBrush x:Key="BgBrush" Color="{StaticResource BgColor}" />
+    <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource PanelColor}" />
+    <SolidColorBrush x:Key="PanelAltBrush" Color="{StaticResource PanelAltColor}" />
+    <SolidColorBrush x:Key="BorderBrushSoft" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="{StaticResource TextDimColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="OnlineBrush" Color="{StaticResource OnlineColor}" />
+    <SolidColorBrush x:Key="OfflineBrush" Color="{StaticResource OfflineColor}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="WarnBrush" Color="{StaticResource WarnColor}" />
+    <SolidColorBrush x:Key="LogBackgroundBrush" Color="{StaticResource LogBackgroundColor}" />
+    <SolidColorBrush x:Key="LogForegroundBrush" Color="{StaticResource LogForegroundColor}" />
+    <SolidColorBrush x:Key="ButtonHoverBrush" Color="{StaticResource ButtonHoverColor}" />
+    <SolidColorBrush x:Key="ButtonPressedBrush" Color="{StaticResource ButtonPressedColor}" />
+    <SolidColorBrush x:Key="SelectionBgBrush" Color="{StaticResource SelectionBgColor}" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}" />
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="{StaticResource PrimaryTextColor}" />
+    <SolidColorBrush x:Key="DangerBgBrush" Color="{StaticResource DangerBgColor}" />
+    <SolidColorBrush x:Key="DangerBorderBrush" Color="{StaticResource DangerBorderColor}" />
+
+    <SolidColorBrush x:Key="LogReceiveBrush" Color="{StaticResource LogReceiveColor}" />
+    <SolidColorBrush x:Key="LogSendBrush" Color="{StaticResource LogSendColor}" />
+    <SolidColorBrush x:Key="LogSystemBrush" Color="{StaticResource LogSystemColor}" />
+    <SolidColorBrush x:Key="LogPrefixBrush" Color="{StaticResource LogPrefixColor}" />
+
+</ResourceDictionary>

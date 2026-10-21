@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>WPF_UartAssist</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>WPF-UartAssist</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\App.ico</ApplicationIcon>
+
+    <!-- 文件属性里显示的信息 -->
+    <Product>WPF 串口助手</Product>
+    <AssemblyTitle>WPF 串口助手</AssemblyTitle>
+    <Description>串口调试助手，支持 HEX/文本收发、Modbus-RTU 报文构造</Description>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Copyright>Copyright © 2026</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 窗口标题栏/任务栏图标（ApplicationIcon 只管 exe 文件图标） -->
+    <Resource Include="Assets\App.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+    <!-- GBK / Big5 等代码页支持，.NET Core 默认不含 -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
+    <!-- 内存占用显示：读「专用工作集」性能计数器，与任务管理器口径一致 -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

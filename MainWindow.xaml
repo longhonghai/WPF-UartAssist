@@ -1,0 +1,632 @@
+﻿<Window x:Class="WPF_UartAssist.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:WPF_UartAssist.ViewModels"
+        mc:Ignorable="d"
+        Title="WPF 串口助手" Height="760" Width="1180"
+        MinHeight="560" MinWidth="900"
+        Background="{DynamicResource BgBrush}"
+        FontFamily="{StaticResource UiFont}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        WindowStartupLocation="CenterScreen"
+        Icon="pack://application:,,,/Assets/App.ico">
+
+    <Window.InputBindings>
+        <KeyBinding Key="Return" Modifiers="Control" Command="{Binding SendCommand}"/>
+        <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenCommand}"/>
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <vm:MainViewModel x:Key="Vm" />
+
+        <!-- 枚举下拉项的显示模板 -->
+        <DataTemplate x:Key="ParityItemTemplate">
+            <TextBlock Text="{Binding Converter={StaticResource ParityToTextConverter}}"
+                       Foreground="{DynamicResource TextBrush}" FontSize="12" />
+        </DataTemplate>
+        <DataTemplate x:Key="StopBitsItemTemplate">
+            <TextBlock Text="{Binding Converter={StaticResource StopBitsToTextConverter}}"
+                       Foreground="{DynamicResource TextBrush}" FontSize="12" />
+        </DataTemplate>
+        <DataTemplate x:Key="HandshakeItemTemplate">
+            <TextBlock Text="{Binding Converter={StaticResource HandshakeToTextConverter}}"
+                       Foreground="{DynamicResource TextBrush}" FontSize="12" />
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ==================== 标题栏 ==================== -->
+        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" Padding="16,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- 状态灯：用 DataTrigger 而非常规转换器，配色才能跟随主题切换 -->
+                    <Border Width="9" Height="9" CornerRadius="5"
+                            VerticalAlignment="Center" Margin="0,0,8,0">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{DynamicResource OfflineBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusBrushKey}" Value="OnlineBrush">
+                                        <Setter Property="Background" Value="{DynamicResource OnlineBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
+                    <TextBlock Text="{Binding StatusText}"
+                               Foreground="{DynamicResource TextBrush}"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="接收 " Style="{StaticResource StatLabel}" />
+                    <TextBlock Text="{Binding RxDisplay}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="   发送 " Style="{StaticResource StatLabel}" Margin="14,0,0,0" />
+                    <TextBlock Text="{Binding TxDisplay}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="   速率 " Style="{StaticResource StatLabel}" Margin="14,0,0,0" />
+                    <TextBlock Text="{Binding RxRateDisplay}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="   内存 " Style="{StaticResource StatLabel}" Margin="14,0,0,0" />
+                    <TextBlock Text="{Binding MemoryDisplay}" Style="{StaticResource StatValue}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource GhostButton}"
+                            Command="{Binding ToggleThemeCommand}"
+                            ToolTip="{Binding ThemeToolTip}"
+                            Margin="0,0,8,0">
+                        <TextBlock Text="{Binding ThemeGlyph}"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="13" />
+                    </Button>
+                    <Button Content="保存日志" Style="{StaticResource GhostButton}"
+                            Command="{Binding SaveLogCommand}" Margin="0,0,6,0" />
+                    <Button Content="清空统计" Style="{StaticResource GhostButton}"
+                            Command="{Binding ClearStatsCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 连接参数（页签：串口 / TCP·UDP） ==================== -->
+        <TabControl x:Name="MainTabs" Grid.Row="1" Margin="12,12,12,0"
+                    Style="{StaticResource MainTabControl}"
+                    ItemContainerStyle="{StaticResource MainTabItem}"
+                    SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
+
+            <TabItem Header="串口">
+                <Border Style="{StaticResource PanelBorder}" Padding="14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="串口" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding Ports}"
+                                      SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
+                                      MinWidth="92" Margin="0,0,6,0" />
+
+                            <TextBlock Text="波特率" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding BaudRates}"
+                                      SelectedItem="{Binding SelectedBaudRate, Mode=TwoWay}"
+                                      MinWidth="96" Margin="0,0,6,0" />
+
+                            <TextBlock Text="数据位" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding DataBitsList}"
+                                      SelectedItem="{Binding SelectedDataBits, Mode=TwoWay}"
+                                      MinWidth="60" Margin="0,0,6,0" />
+
+                            <TextBlock Text="校验" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding ParityList}"
+                                      SelectedItem="{Binding SelectedParity, Mode=TwoWay}"
+                                      MinWidth="92" Margin="0,0,6,0"
+                                      ItemTemplate="{StaticResource ParityItemTemplate}" />
+
+                            <TextBlock Text="停止位" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding StopBitsList}"
+                                      SelectedItem="{Binding SelectedStopBits, Mode=TwoWay}"
+                                      MinWidth="76" Margin="0,0,6,0"
+                                      ItemTemplate="{StaticResource StopBitsItemTemplate}" />
+
+                            <TextBlock Text="流控" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding HandshakeList}"
+                                      SelectedItem="{Binding SelectedHandshake, Mode=TwoWay}"
+                                      MinWidth="140" Margin="0,0,6,0"
+                                      ItemTemplate="{StaticResource HandshakeItemTemplate}" />
+
+                            <TextBlock Text="编码" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding EncodingOptions}"
+                                      DisplayMemberPath="Name"
+                                      SelectedItem="{Binding SelectedEncoding, Mode=TwoWay}"
+                                      MinWidth="86" Margin="0,0,6,0" />
+
+                            <Button Content="刷新" Style="{StaticResource GhostButton}"
+                                    Command="{Binding RefreshPortsCommand}" Margin="8,0,0,0" />
+                        </WrapPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button Content="打开串口" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding OpenCommand}" Margin="0,0,8,0"
+                                    MinWidth="96" />
+                            <Button Content="关闭" Style="{StaticResource BaseButton}"
+                                    Command="{Binding CloseCommand}" MinWidth="76" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="TCP / UDP">
+                <Border Style="{StaticResource PanelBorder}" Padding="14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="方式" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding NetworkModes}"
+                                      SelectedItem="{Binding SelectedNetworkMode, Mode=TwoWay}"
+                                      MinWidth="116" Margin="0,0,6,0" />
+
+                            <TextBlock Text="远端地址" Style="{StaticResource LabelText}" Margin="8,0,6,0"
+                                       Visibility="{Binding NeedsRemoteHost, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBox Text="{Binding Network.RemoteHost, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="130" ToolTip="IP 或主机名，如 127.0.0.1 或 localhost"
+                                     Visibility="{Binding NeedsRemoteHost, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <TextBlock Text="远端端口" Style="{StaticResource LabelText}" Margin="8,0,6,0"
+                                       Visibility="{Binding NeedsRemoteHost, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBox Text="{Binding Network.RemotePort, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="64" ToolTip="1–65535"
+                                     Visibility="{Binding NeedsRemoteHost, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <TextBlock Text="本地端口" Style="{StaticResource LabelText}" Margin="8,0,6,0"
+                                       Visibility="{Binding NeedsLocalPort, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBox Text="{Binding Network.LocalPort, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="64" ToolTip="{Binding NetworkPortHint}"
+                                     Visibility="{Binding NeedsLocalPort, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <TextBlock Text="编码" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding EncodingOptions}"
+                                      DisplayMemberPath="Name"
+                                      SelectedItem="{Binding SelectedEncoding, Mode=TwoWay}"
+                                      MinWidth="86" Margin="0,0,6,0" />
+                        </WrapPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button Content="连接" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding OpenNetworkCommand}" Margin="0,0,8,0"
+                                    MinWidth="96" />
+                            <Button Content="断开" Style="{StaticResource BaseButton}"
+                                    Command="{Binding CloseNetworkCommand}" MinWidth="76" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="S7 西门子">
+                <Border Style="{StaticResource PanelBorder}" Padding="14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="PLC 地址" Style="{StaticResource LabelText}" />
+                            <TextBox Text="{Binding S7SettingsModel.Host, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="130" ToolTip="PLC 的 IP 或主机名" />
+
+                            <TextBlock Text="端口" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding S7SettingsModel.Port, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="60" ToolTip="ISO-on-TCP 固定为 102" />
+
+                            <TextBlock Text="机架" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding S7SettingsModel.Rack, UpdateSourceTrigger=LostFocus}"
+                                     Width="46" ToolTip="机架号，一般为 0" />
+
+                            <TextBlock Text="槽位" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding S7SettingsModel.Slot, UpdateSourceTrigger=LostFocus}"
+                                     Width="46" ToolTip="S7-1200/1500 为 1，S7-300/400 为 2" />
+
+                            <TextBlock Text="PDU" Style="{StaticResource LabelText}" Margin="8,0,6,0"
+                                       ToolTip="连接成功后由 PLC 协商返回" />
+                            <TextBlock Text="{Binding S7PduSizeDisplay}"
+                                       VerticalAlignment="Center" FontSize="12"
+                                       Foreground="{DynamicResource TextDimBrush}" />
+                        </WrapPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button Content="连接" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding OpenS7Command}" Margin="0,0,8,0"
+                                    MinWidth="96" />
+                            <Button Content="断开" Style="{StaticResource BaseButton}"
+                                    Command="{Binding CloseS7Command}" MinWidth="76" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <!-- ==================== 接收区 ==================== -->
+        <Grid Grid.Row="2" Margin="12,12,12,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <WrapPanel Grid.Row="0" Margin="0,0,0,8" VerticalAlignment="Center">
+                <CheckBox Content="HEX 显示" IsChecked="{Binding ReceiveHexMode}" Margin="0,0,14,0" />
+                <CheckBox Content="时间戳" IsChecked="{Binding ShowTimestamp}" Margin="0,0,14,0" />
+                <CheckBox Content="自动换行" IsChecked="{Binding WordWrap}" Margin="0,0,14,0" />
+                <CheckBox Content="自动滚动" IsChecked="{Binding AutoScroll}" Margin="0,0,14,0" />
+                <CheckBox Content="打开时清空" IsChecked="{Binding AutoClearOnOpen}" Margin="0,0,14,0" />
+
+                <Border Style="{StaticResource Separator}" />
+
+                <TextBlock Text="过滤" Style="{StaticResource LabelText}" Margin="6,0,6,0" />
+                <TextBox Text="{Binding ReceiveFilter, UpdateSourceTrigger=PropertyChanged}"
+                         Width="130" ToolTip="仅显示包含关键字的接收内容，留空显示全部" />
+
+                <TextBlock Text="字号" Style="{StaticResource LabelText}" Margin="14,0,6,0" />
+                <Slider Value="{Binding LogFontSize, Mode=TwoWay}"
+                        Minimum="10" Maximum="24" Width="90"
+                        VerticalAlignment="Center"
+                        IsSnapToTickEnabled="True" TickFrequency="1" />
+
+                <Button Content="清空" Style="{StaticResource GhostButton}"
+                        Command="{Binding ClearLogCommand}" Margin="14,0,0,0" />
+            </WrapPanel>
+
+            <Border Grid.Row="1" Style="{StaticResource PanelBorder}" Padding="0">
+                <Grid>
+                    <RichTextBox x:Name="LogBox"
+                                 Style="{StaticResource LogRichTextBox}"
+                                 FontSize="{Binding LogFontSize}" />
+                    <TextBlock Text="暂无数据"
+                               Foreground="{DynamicResource TextDimBrush}"
+                               FontSize="13"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasLogContent}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ==================== Modbus-RTU 报文构造器 ==================== -->
+        <Border Grid.Row="3" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
+                Visibility="{Binding Modbus.IsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <WrapPanel Grid.Row="0" VerticalAlignment="Center">
+                    <TextBlock Text="从设备 ID" Style="{StaticResource LabelText}" />
+                    <TextBox Text="{Binding Modbus.SlaveIdText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="64" ToolTip="1–247，支持十进制或 0x 十六进制" />
+
+                    <TextBlock Text="功能号" Style="{StaticResource LabelText}" Margin="12,0,6,0" />
+                    <ComboBox ItemsSource="{Binding Modbus.FunctionCodes}"
+                              SelectedItem="{Binding Modbus.SelectedFunction, Mode=TwoWay}"
+                              MinWidth="150" />
+
+                    <TextBlock Text="寄存器地址" Style="{StaticResource LabelText}" Margin="12,0,6,0" />
+                    <TextBox Text="{Binding Modbus.AddressText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="76" MaxLength="6"
+                             ToolTip="16 位地址，最多 4 位十六进制（0x0000–0xFFFF）" />
+
+                    <TextBlock Text="数量/值" Style="{StaticResource LabelText}" Margin="12,0,6,0" />
+                    <TextBox Text="{Binding Modbus.QuantityText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="72" MaxLength="6"
+                             ToolTip="16 位数值，最多 4 位十六进制（0xFFFF）。读=数量；05/06=写入值（线圈 0/1）；0F/10=写入数量" />
+
+                    <TextBlock Text="写入数据" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               Visibility="{Binding Modbus.NeedsData, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding Modbus.DataText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="150" FontFamily="{StaticResource MonoFont}"
+                             Visibility="{Binding Modbus.NeedsData, Converter={StaticResource BoolToVisibilityConverter}}"
+                             ToolTip="HEX，如 01 A0 FF" />
+                </WrapPanel>
+
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBox Grid.Row="0"
+                             Text="{Binding Modbus.FramePreview, Mode=OneWay}"
+                             IsReadOnly="True"
+                             FontFamily="{StaticResource MonoFont}"
+                             FontSize="14"
+                             Height="52"
+                             VerticalContentAlignment="Center"
+                             Background="{DynamicResource LogBackgroundBrush}" />
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding Modbus.FrameError}"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding Modbus.HasFrameError, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <TextBlock Text="地址或数值支持十进制或 0x 十六进制"
+                                   Foreground="{DynamicResource TextDimBrush}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding Modbus.HasFrameError, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                        <Button Content="复制" Style="{StaticResource GhostButton}"
+                                Command="{Binding Modbus.CopyFrameCommand}" Margin="12,0,0,0" />
+                        <Button Content="清除" Style="{StaticResource GhostButton}"
+                                Command="{Binding Modbus.ClearFieldsCommand}" Margin="6,0,0,0" />
+                        <Button Content="发送报文"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding Modbus.SendFrameCommand}"
+                                MinWidth="96" Margin="6,0,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ==================== S7（ISO-on-TCP）报文构造器 ==================== -->
+        <Border Grid.Row="4" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
+                Visibility="{Binding S7.IsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <WrapPanel Grid.Row="0" VerticalAlignment="Center">
+                    <TextBlock Text="操作" Style="{StaticResource LabelText}" />
+                    <ComboBox ItemsSource="{Binding S7.Operations}"
+                              SelectedItem="{Binding S7.SelectedOperation, Mode=TwoWay}"
+                              MinWidth="86" Margin="0,0,6,0" />
+
+                    <TextBlock Text="存储区" Style="{StaticResource LabelText}" Margin="12,0,6,0" />
+                    <ComboBox ItemsSource="{Binding S7.Areas}"
+                              SelectedItem="{Binding S7.SelectedArea, Mode=TwoWay}"
+                              MinWidth="122" Margin="0,0,6,0" />
+
+                    <TextBlock Text="DB 号" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               Visibility="{Binding S7.NeedsDbNumber, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding S7.DbNumberText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="58"
+                             Visibility="{Binding S7.NeedsDbNumber, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="字节地址" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               Visibility="{Binding S7.IsBoolType, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding S7.ByteAddressText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="66"
+                             Visibility="{Binding S7.IsBoolType, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="位" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               ToolTip="BOOL 类型时这里是要访问的位号 0–7"
+                               Visibility="{Binding S7.IsBoolType, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding S7.BitAddressText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="46" MaxLength="2"
+                             Visibility="{Binding S7.IsBoolType, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="类型" Style="{StaticResource LabelText}" Margin="12,0,6,0" />
+                    <ComboBox ItemsSource="{Binding S7.DataTypes}"
+                              SelectedItem="{Binding S7.SelectedDataType, Mode=TwoWay}"
+                              MinWidth="80" Margin="0,0,6,0" />
+
+                    <TextBlock Text="数量" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               ToolTip="读取的元素个数；BOOL 时为位数"
+                               Visibility="{Binding S7.IsWrite, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding S7.CountText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="58"
+                             Visibility="{Binding S7.IsWrite, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="写入值" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               Visibility="{Binding S7.IsWrite, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding S7.WriteDataText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="130" FontFamily="{StaticResource MonoFont}"
+                             Visibility="{Binding S7.IsWrite, Converter={StaticResource BoolToVisibilityConverter}}"
+                             ToolTip="HEX，如 12 34 56 78；BOOL 填 00 或 01" />
+                </WrapPanel>
+
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBox Grid.Row="0"
+                             Text="{Binding S7.FramePreview, Mode=OneWay}"
+                             IsReadOnly="True"
+                             FontFamily="{StaticResource MonoFont}"
+                             FontSize="14"
+                             Height="52"
+                             VerticalContentAlignment="Center"
+                             Background="{DynamicResource LogBackgroundBrush}" />
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding S7.FrameError}"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding S7.HasFrameError, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <TextBlock Text="{Binding S7.FrameHint}"
+                                   Foreground="{DynamicResource TextDimBrush}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding S7.HasFrameError, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                        <Button Content="复制" Style="{StaticResource GhostButton}"
+                                Command="{Binding S7.CopyFrameCommand}" Margin="12,0,0,0" />
+                        <Button Content="清除" Style="{StaticResource GhostButton}"
+                                Command="{Binding S7.ClearFieldsCommand}" Margin="6,0,0,0" />
+                        <Button Content="发送报文"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding S7.SendFrameCommand}"
+                                MinWidth="96" Margin="6,0,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 发送区 ==================== -->
+        <Border Grid.Row="5" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <WrapPanel Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,8">
+                    <CheckBox Content="HEX 发送" IsChecked="{Binding SendHexMode}" Margin="0,0,14,0" />
+
+                    <!-- S7 报文带长度字段，多一个换行字节就会被 PLC 丢弃，该页签下不提供此选项 -->
+                    <CheckBox Content="追加换行符" IsChecked="{Binding AppendNewLine}" Margin="0,0,14,0"
+                              ToolTip="S7 报文带长度字段，追加换行符会让 PLC 直接丢弃该帧"
+                              Visibility="{Binding IsS7Tab, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="S7 报文按帧发送，不追加换行符"
+                               Foreground="{DynamicResource TextDimBrush}"
+                               FontSize="11" VerticalAlignment="Center" Margin="0,0,14,0"
+                               Visibility="{Binding IsS7Tab, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <Border Style="{StaticResource Separator}" />
+
+                    <CheckBox Content="Modbus-RTU 构造器"
+                              IsChecked="{Binding Modbus.IsVisible}"
+                              ToolTip="生成带 CRC16 的 Modbus-RTU 请求帧（仅串口页签可用）"
+                              Margin="6,0,14,0"
+                              Visibility="{Binding IsSerialTab, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <CheckBox Content="S7 构造器"
+                              IsChecked="{Binding S7.IsVisible}"
+                              ToolTip="生成 ISO-on-TCP / S7comm 报文（仅 S7 页签可用）"
+                              Margin="0,0,14,0"
+                              Visibility="{Binding IsS7Tab, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <Border Style="{StaticResource Separator}" />
+
+                    <TextBlock Text="循环间隔" Style="{StaticResource LabelText}" Margin="6,0,6,0" />
+                    <TextBox Text="{Binding LoopConfig.IntervalMs, UpdateSourceTrigger=LostFocus}"
+                             Width="60" />
+                    <TextBlock Text="ms" Style="{StaticResource LabelText}" Margin="4,0,14,0" />
+
+                    <TextBlock Text="循环次数" Style="{StaticResource LabelText}" />
+                    <TextBox Text="{Binding LoopConfig.Count, UpdateSourceTrigger=LostFocus}"
+                             Width="52" ToolTip="填 0 表示无限循环" />
+                    <TextBlock Text="次" Style="{StaticResource LabelText}" Margin="4,0,14,0" />
+
+                    <Button Content="{Binding LoopButtonText}"
+                            Style="{StaticResource BaseButton}"
+                            Command="{Binding ToggleLoopSendCommand}" Margin="0,0,8,0" />
+
+                    <Button Content="从文件载入" Style="{StaticResource GhostButton}"
+                            Command="{Binding LoadSendFileCommand}" Margin="0,0,6,0" />
+                    <Button Content="发送文件" Style="{StaticResource GhostButton}"
+                            Command="{Binding SendFileCommand}" />
+                </WrapPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <!-- 文本输入：非 HEX 模式时显示 -->
+                        <TextBox x:Name="SendBox"
+                                 Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 Height="72"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Visibility="{Binding SendHexMode, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                 FontFamily="{StaticResource MonoFont}" />
+
+                        <!-- HEX 输入：HEX 模式时显示 -->
+                        <TextBox Text="{Binding SendHexText, UpdateSourceTrigger=PropertyChanged}"
+                                 Height="72"
+                                 VerticalScrollBarVisibility="Auto"
+                                 AcceptsReturn="True"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 Visibility="{Binding SendHexMode, Converter={StaticResource BoolToVisibilityConverter}}"
+                                 ToolTip="支持空格、逗号、换行分隔，可写 0x 前缀" />
+
+                        <TextBlock Text="{Binding SendHexError}"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   FontSize="11"
+                                   Margin="2,4,0,0"
+                                   Visibility="{Binding HasSendHexError, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <!-- 编码不支持中文时的提示 -->
+                        <TextBlock Text="{Binding EncodingWarningText}"
+                                   Foreground="{DynamicResource WarnBrush}"
+                                   FontSize="11"
+                                   Margin="2,4,0,0"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding ShowEncodingWarning, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top">
+                        <Button Content="发送  ⌃↵"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding SendCommand}"
+                                Width="104" Height="38"
+                                FontSize="13" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ==================== 状态栏 ==================== -->
+        <Border Grid.Row="6" Background="{DynamicResource PanelBrush}" Padding="16,6" Margin="0,12,0,0">
+            <Grid>
+                <TextBlock Text="{Binding ConnectionSummary}"
+                           Foreground="{DynamicResource TextDimBrush}"
+                           FontSize="11"
+                           HorizontalAlignment="Left" />
+
+                <TextBlock Foreground="{DynamicResource TextDimBrush}"
+                           FontSize="11"
+                           HorizontalAlignment="Right">
+                    <Run Text="行数 " /><Run Text="{Binding RxLineCount, Mode=OneWay}" /><Run Text="    Ctrl+Enter 发送    Ctrl+O 打开/关闭" />
+                </TextBlock>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
