@@ -21,6 +21,12 @@ public sealed class AppSettings
     /// <summary>S7 连接参数（地址、端口、机架、槽位）。</summary>
     public S7Settings S7 { get; set; } = new();
 
+    /// <summary>OPC UA 连接参数与内置服务端端口。</summary>
+    public OpcUaSettings OpcUa { get; set; } = new();
+
+    /// <summary>MQTT 连接与主题参数。</summary>
+    public MqttSettings Mqtt { get; set; } = new();
+
     public bool ReceiveHexMode { get; set; }    public bool ShowTimestamp { get; set; } = true;
     public bool TimestampWithMs { get; set; } = true;
     public bool SendHexMode { get; set; }

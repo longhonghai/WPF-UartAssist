@@ -46,14 +46,12 @@ public static class ModbusRtu
     }
 
     /// <summary>
-    /// 构造主站请求帧。
-    /// quantity 对读功能码是寄存器/线圈数量；对 05/06 是写入值；对 0F/10 是写入数量。
+    /// 构造 PDU（功能码 + 地址 + 数量/数据），RTU 与 TCP 共用。
     /// </summary>
-    public static byte[] BuildRequest(byte slaveId, byte function, ushort address, ushort quantity, byte[]? writeData)
+    public static byte[] BuildPdu(byte function, ushort address, ushort quantity, byte[]? writeData)
     {
-        var frame = new List<byte>(12)
+        var pdu = new List<byte>(12)
         {
-            slaveId,
             function,
             (byte)(address >> 8),
             (byte)(address & 0xFF)
@@ -63,23 +61,57 @@ public static class ModbusRtu
         {
             int dataLength = writeData?.Length ?? 0;
 
-            frame.Add((byte)(quantity >> 8));
-            frame.Add((byte)(quantity & 0xFF));
-            frame.Add((byte)dataLength);          // 字节数
+            pdu.Add((byte)(quantity >> 8));
+            pdu.Add((byte)(quantity & 0xFF));
+            pdu.Add((byte)dataLength);            // 字节数
 
             if (writeData is not null)
             {
-                frame.AddRange(writeData);
+                pdu.AddRange(writeData);
             }
         }
         else
         {
             // 01/02/03/04 的数量，05/06 的写入值
-            frame.Add((byte)(quantity >> 8));
-            frame.Add((byte)(quantity & 0xFF));
+            pdu.Add((byte)(quantity >> 8));
+            pdu.Add((byte)(quantity & 0xFF));
         }
 
-        byte[] body = frame.ToArray();
+        return pdu.ToArray();
+    }
+
+    /// <summary>
+    /// 构造 Modbus TCP（MBAP + PDU）请求帧：事务号(2) + 协议号(2，恒 0) + 长度(2) + 单元号(1) + PDU，无 CRC。
+    /// </summary>
+    public static byte[] BuildTcpRequest(ushort transactionId, byte unitId, byte[] pdu)
+    {
+        ushort length = (ushort)(pdu.Length + 1);   // 单元号 + PDU
+
+        var frame = new byte[7 + pdu.Length];
+        frame[0] = (byte)(transactionId >> 8);
+        frame[1] = (byte)(transactionId & 0xFF);
+        frame[2] = 0;                               // 协议标识
+        frame[3] = 0;
+        frame[4] = (byte)(length >> 8);
+        frame[5] = (byte)(length & 0xFF);
+        frame[6] = unitId;
+
+        Buffer.BlockCopy(pdu, 0, frame, 7, pdu.Length);
+        return frame;
+    }
+
+    /// <summary>
+    /// 构造主站请求帧。
+    /// quantity 对读功能码是寄存器/线圈数量；对 05/06 是写入值；对 0F/10 是写入数量。
+    /// </summary>
+    public static byte[] BuildRequest(byte slaveId, byte function, ushort address, ushort quantity, byte[]? writeData)
+    {
+        byte[] pdu = BuildPdu(function, address, quantity, writeData);
+
+        byte[] body = new byte[pdu.Length + 1];
+        body[0] = slaveId;
+        Buffer.BlockCopy(pdu, 0, body, 1, pdu.Length);
+
         byte[] crc = Crc16(body);
 
         var result = new byte[body.Length + 2];

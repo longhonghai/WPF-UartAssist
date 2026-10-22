@@ -5,8 +5,8 @@ using WPF_UartAssist.Services;
 namespace WPF_UartAssist.ViewModels;
 
 /// <summary>
-/// Modbus-RTU 报文构造器。输入从站地址/功能码/寄存器地址与数量，
-/// 实时生成带 CRC16 的请求帧，可复制或直接发送。
+/// Modbus 报文构造器。输入从站/单元号、功能码、寄存器地址与数量，
+/// 实时生成请求帧：串口下是 RTU（末尾 CRC16），网络下是 TCP（MBAP 头，无 CRC）。
 /// </summary>
 public sealed class ModbusRtuViewModel : ObservableObject
 {
@@ -38,6 +38,55 @@ public sealed class ModbusRtuViewModel : ObservableObject
     }
 
     public bool IsHidden => !_isVisible;
+
+    /// <summary>帧格式：RTU 走串口，TCP 走以太网（MBAP）。</summary>
+    public IReadOnlyList<string> FrameModes { get; } = ["Modbus RTU", "Modbus TCP"];
+
+    private string _selectedFrameMode = "Modbus RTU";
+
+    public string SelectedFrameMode
+    {
+        get => _selectedFrameMode;
+        set
+        {
+            if (SetProperty(ref _selectedFrameMode, value))
+            {
+                OnPropertyChanged(nameof(IsTcpFrame));
+                OnPropertyChanged(nameof(CheckboxText));
+                OnPropertyChanged(nameof(FrameNote));
+                OnPropertyChanged(nameof(UnitLabel));
+                Regenerate();
+            }
+        }
+    }
+
+    public bool IsTcpFrame => _selectedFrameMode == "Modbus TCP";
+
+    /// <summary>勾选框文字随帧格式变化。</summary>
+    public string CheckboxText => IsTcpFrame ? "Modbus TCP 构造器" : "Modbus-RTU 构造器";
+
+    /// <summary>帧格式说明，显示在面板底部。</summary>
+    public string FrameNote => IsTcpFrame
+        ? "Modbus TCP：事务号 + 协议号 + 长度 + 单元号 + PDU，无 CRC"
+        : "Modbus-RTU：单元号 + PDU + CRC16";
+
+    /// <summary>从站号在 TCP 下叫单元号。</summary>
+    public string UnitLabel => IsTcpFrame ? "单元号" : "从设备 ID";
+
+    /// <summary>MBAP 事务号，每发一帧自动 +1。</summary>
+    private string _transactionIdText = "1";
+
+    public string TransactionIdText
+    {
+        get => _transactionIdText;
+        set
+        {
+            if (SetProperty(ref _transactionIdText, value))
+            {
+                Regenerate();
+            }
+        }
+    }
 
     public IReadOnlyList<string> FunctionCodes { get; } =
         ModbusRtu.Functions.Select(f => f.Label).ToArray();
@@ -185,6 +234,16 @@ public sealed class ModbusRtuViewModel : ObservableObject
             if (_frameBytes is { Length: > 0 })
             {
                 _sendRaw(_frameBytes);
+
+                // TCP 的事务号逐帧递增，便于与响应配对
+                if (IsTcpFrame)
+                {
+                    ushort next = ModbusRtu.TryParseUshort(TransactionIdText, out ushort id)
+                        ? (ushort)(id + 1)
+                        : (ushort)1;
+
+                    TransactionIdText = next.ToString();
+                }
             }
         },
         () => HasFrame);
@@ -196,9 +255,12 @@ public sealed class ModbusRtuViewModel : ObservableObject
     {
         _frameBytes = null;
 
-        if (!ModbusRtu.TryParseUshort(SlaveIdText, out ushort slaveId) || slaveId is < 1 or > 247)
+        // RTU 的从站地址是 1–247；TCP 的单元号允许 0–255（常见用 0 或 255 表示网关直连）
+        bool slaveOk = ModbusRtu.TryParseUshort(SlaveIdText, out ushort slaveId);
+
+        if (!slaveOk || (IsTcpFrame ? slaveId > 255 : slaveId is < 1 or > 247))
         {
-            FrameError = "从设备 ID 应为 1–247";
+            FrameError = IsTcpFrame ? "单元号应为 0–255" : "从设备 ID 应为 1–247";
             FramePreview = string.Empty;
             return;
         }
@@ -314,7 +376,20 @@ public sealed class ModbusRtuViewModel : ObservableObject
                 break;
         }
 
-        byte[] frame = ModbusRtu.BuildRequest((byte)slaveId, function, address, quantity, writeData);
+        byte[] pdu = ModbusRtu.BuildPdu(function, address, quantity, writeData);
+
+        byte[] frame;
+
+        if (IsTcpFrame)
+        {
+            ushort transactionId = ModbusRtu.TryParseUshort(TransactionIdText, out ushort id) ? id : (ushort)1;
+            frame = ModbusRtu.BuildTcpRequest(transactionId, (byte)slaveId, pdu);
+        }
+        else
+        {
+            frame = ModbusRtu.BuildRequest((byte)slaveId, function, address, quantity, writeData);
+        }
+
         _frameBytes = frame;
         FramePreview = HexConverter.ToHex(frame);
         FrameError = string.Empty;

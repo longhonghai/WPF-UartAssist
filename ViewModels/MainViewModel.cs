@@ -16,20 +16,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly AppSettings _settings;
     private readonly Dispatcher _dispatcher;
 
-    /// <summary>串口连接（与网络、S7 连接可同时存在）。</summary>
+    /// <summary>串口连接（与网络、S7、MQTT 连接可同时存在）。</summary>
     private ITransport? _serialTransport;
 
-    /// <summary>TCP/UDP 连接（与串口、S7 连接可同时存在）。</summary>
+    /// <summary>TCP/UDP 连接（与串口、S7、MQTT 连接可同时存在）。</summary>
     private ITransport? _networkTransport;
 
-    /// <summary>S7 连接（与串口、网络连接可同时存在）。</summary>
+    /// <summary>S7 连接（与串口、网络、MQTT 连接可同时存在）。</summary>
     private ITransport? _s7Transport;
 
-    /// <summary>当前页签：0=串口，1=TCP/UDP，2=S7。发送与状态栏跟随页签。</summary>
+    /// <summary>MQTT 连接（与串口、网络、S7 连接可同时存在）。</summary>
+    private ITransport? _mqttTransport;
+
+    /// <summary>OPC UA 客户端会话（与其余连接可同时存在）。</summary>
+    private ITransport? _opcUaTransport;
+
+    /// <summary>内置 OPC UA 服务端，独立于客户端存在。</summary>
+    private OpcUaServerHost? _opcUaServer;
+
+    /// <summary>当前页签：0=串口，1=TCP/UDP，2=S7，3=MQTT，4=OPC UA。发送与状态栏跟随页签。</summary>
     private int _selectedTabIndex;
     private readonly DispatcherTimer _rxFlushTimer;
     private readonly DispatcherTimer _loopSendTimer;
-    private readonly List<(string Tag, byte[] Data)> _pendingRx = [];
+
+    /// <summary>待刷新的接收数据。Topic 非空时按主题显示（MQTT）。</summary>
+    private readonly List<PendingRx> _pendingRx = [];
     private readonly object _pendingLock = new();
     private readonly Stopwatch _uptime = new();
     private readonly DispatcherTimer _memoryTimer;
@@ -38,6 +49,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _privateWsProbeStarted;
     private bool _privateWsProbeDone;
     private bool _disposed;
+
+    /// <summary>接收队列中的一项。Topic 为空表示普通字节流数据。</summary>
+    private readonly record struct PendingRx(string Tag, byte[] Data, string? Topic, int Qos, bool Retain);
 
     private static readonly int[] DefaultBaudRates =
     [
@@ -52,8 +66,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _txBytes;
     private double _rxRate;
 
-    /// <summary>各通道（串口/网络/S7）的日志行数，状态栏显示当前页签的。</summary>
-    private readonly int[] _rxLinesPerChannel = new int[3];
+    /// <summary>各通道（串口/网络/S7/MQTT/OPC UA）的日志行数，状态栏显示当前页签的。</summary>
+    private readonly int[] _rxLinesPerChannel = new int[5];
 
     public MainViewModel()
     {
@@ -61,11 +75,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _settings = SettingsService.Load();
         Network = _settings.Network.Clone();
         S7SettingsModel = _settings.S7.Clone();
+        MqttSettingsModel = _settings.Mqtt.Clone();
+        OpcUaSettingsModel = _settings.OpcUa.Clone();
 
         // 内存占用显示：先占位为 "--"，后台探测专用工作集计数器后再显示，
         // 避免先显示完整工作集（数值偏大）再跳变
         _memoryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _memoryTimer.Tick += (_, _) => UpdateMemoryUsage();
+        _memoryTimer.Tick += (_, _) =>
+        {
+            UpdateMemoryUsage();
+
+            // 服务端变量可能被外部客户端改写，顺带刷新界面
+            RefreshOpcUaVariables();
+        };
         _memoryTimer.Start();
         StartPrivateWorkingSetProbe();
 
@@ -91,6 +113,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloseNetworkCommand = new RelayCommand(CloseNetwork, () => _networkTransport?.IsOpen == true);
         OpenS7Command = new RelayCommand(OpenS7, () => _s7Transport?.IsOpen != true);
         CloseS7Command = new RelayCommand(CloseS7, () => _s7Transport?.IsOpen == true);
+        OpenMqttCommand = new RelayCommand(OpenMqtt, () => _mqttTransport?.IsOpen != true);
+        CloseMqttCommand = new RelayCommand(CloseMqtt, () => _mqttTransport?.IsOpen == true);
+        MqttSubscribeCommand = new RelayCommand(SubscribeMqtt, () => _mqttTransport?.IsOpen == true);
+        MqttUnsubscribeCommand = new RelayCommand(UnsubscribeMqtt, () => _mqttTransport?.IsOpen == true);
+        MqttPublishCommand = new RelayCommand(PublishMqtt, () => _mqttTransport?.IsOpen == true);
+        OpenOpcUaCommand = new RelayCommand(OpenOpcUa, () => _opcUaTransport?.IsOpen != true);
+        CloseOpcUaCommand = new RelayCommand(CloseOpcUa, () => _opcUaTransport?.IsOpen == true);
+        OpcUaReadCommand = new RelayCommand(ReadOpcUaNode, () => _opcUaTransport?.IsOpen == true);
+        OpcUaWriteCommand = new RelayCommand(WriteOpcUaNode, () => _opcUaTransport?.IsOpen == true);
+        OpcUaBrowseCommand = new RelayCommand(BrowseOpcUa, () => _opcUaTransport?.IsOpen == true);
+        StartOpcUaServerCommand = new RelayCommand(StartOpcUaServer, () => _opcUaServer?.IsRunning != true);
+        StopOpcUaServerCommand = new RelayCommand(StopOpcUaServer, () => _opcUaServer?.IsRunning == true);
+        WriteOpcUaVariableCommand = new RelayCommand(WriteOpcUaVariable, () => _opcUaServer?.IsRunning == true);
         RefreshPortsCommand = new RelayCommand(RefreshPorts);
         SendCommand = new RelayCommand(Send, () => IsOpen);
         SendFileCommand = new RelayCommand(SendFile, () => IsOpen);
@@ -244,6 +279,116 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     #endregion
 
+    #region MQTT 通讯
+
+    /// <summary>MQTT 连接与主题参数。</summary>
+    public Models.MqttSettings MqttSettingsModel { get; }
+
+    /// <summary>当前已订阅的主题，连接后显示。</summary>
+    public string MqttSubscriptionDisplay =>
+        _mqttTransport is MqttTransport t && t.IsOpen
+            ? (t.SubscribedTopics.Count > 0 ? string.Join("，", t.SubscribedTopics) : "未订阅")
+            : "--";
+
+    /// <summary>可用的 QoS 选项。</summary>
+    public IReadOnlyList<string> MqttQosLevels { get; } = ["0 最多一次", "1 至少一次", "2 恰好一次"];
+
+    /// <summary>可用的协议版本。</summary>
+    public IReadOnlyList<string> MqttProtocolVersions { get; } = ["3.1.1", "5.0"];
+
+    /// <summary>QoS 下拉项对应的数值。</summary>
+    public static int ParseQosLevel(string label)
+    {
+        if (string.IsNullOrEmpty(label))
+        {
+            return 0;
+        }
+
+        int space = label.IndexOf(' ');
+        string head = space > 0 ? label[..space] : label;
+
+        return int.TryParse(head, out int level) ? Math.Clamp(level, 0, 2) : 0;
+    }
+
+    #endregion
+
+
+    #region OPC UA 通讯
+
+    /// <summary>OPC UA 连接与节点参数。</summary>
+    public Models.OpcUaSettings OpcUaSettingsModel { get; }
+
+    /// <summary>工作方式：客户端连接别人的服务端，或自己起一个服务端。</summary>
+    public IReadOnlyList<string> OpcUaModes { get; } = ["客户端", "服务端"];
+
+    private string _selectedOpcUaMode = "客户端";
+
+    public string SelectedOpcUaMode
+    {
+        get => _selectedOpcUaMode;
+        set
+        {
+            if (SetProperty(ref _selectedOpcUaMode, value))
+            {
+                OnPropertyChanged(nameof(IsOpcUaClientMode));
+                OnPropertyChanged(nameof(IsOpcUaServerMode));
+            }
+        }
+    }
+
+    public bool IsOpcUaClientMode => _selectedOpcUaMode == "客户端";
+
+    public bool IsOpcUaServerMode => _selectedOpcUaMode == "服务端";
+
+    /// <summary>客户端最近一次读取的结果（值 / 类型 / 状态 / 时间）。</summary>
+    private string _opcUaReadResult = "尚未读取";
+
+    public string OpcUaReadResult
+    {
+        get => _opcUaReadResult;
+        private set => SetProperty(ref _opcUaReadResult, value);
+    }
+
+    /// <summary>服务端状态文字。</summary>
+    private string _opcUaServerStatus = "未启动";
+
+    public string OpcUaServerStatus
+    {
+        get => _opcUaServerStatus;
+        private set => SetProperty(ref _opcUaServerStatus, value);
+    }
+
+    /// <summary>服务端地址空间里的变量，供界面展示与修改。</summary>
+    public ObservableCollection<OpcUaVariableRow> OpcUaVariables { get; } = [];
+
+    private OpcUaVariableRow? _selectedOpcUaVariable;
+
+    public OpcUaVariableRow? SelectedOpcUaVariable
+    {
+        get => _selectedOpcUaVariable;
+        set => SetProperty(ref _selectedOpcUaVariable, value);
+    }
+
+    /// <summary>服务端模式下要写入的值。</summary>
+    private string _opcUaServerValueText = string.Empty;
+
+    public string OpcUaServerValueText
+    {
+        get => _opcUaServerValueText;
+        set => SetProperty(ref _opcUaServerValueText, value);
+    }
+
+    public RelayCommand OpenOpcUaCommand { get; }
+    public RelayCommand CloseOpcUaCommand { get; }
+    public RelayCommand OpcUaReadCommand { get; }
+    public RelayCommand OpcUaWriteCommand { get; }
+    public RelayCommand OpcUaBrowseCommand { get; }
+    public RelayCommand StartOpcUaServerCommand { get; }
+    public RelayCommand StopOpcUaServerCommand { get; }
+    public RelayCommand WriteOpcUaVariableCommand { get; }
+
+    #endregion
+
     #region 选中项代理属性
 
     public string SelectedPort
@@ -312,6 +457,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         1 => _networkTransport,
         2 => _s7Transport,
+        3 => _mqttTransport,
+        4 => _opcUaTransport,
         _ => _serialTransport
     };
 
@@ -321,7 +468,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsS7Tab => _selectedTabIndex == 2;
 
-    /// <summary>页签索引（0=串口，1=TCP/UDP，2=S7），切换时联动状态栏与协议构造器。</summary>
+    public bool IsMqttTab => _selectedTabIndex == 3;
+
+    public bool IsOpcUaTab => _selectedTabIndex == 4;
+
+    /// <summary>Modbus 构造器可用的页签：串口（RTU）与 TCP/UDP（TCP）。</summary>
+    public bool SupportsModbusTab => IsSerialTab || IsNetworkTab;
+
+    /// <summary>发送按钮文字：MQTT 页签下是「发布」。</summary>
+    public string SendButtonText => IsMqttTab ? "发布  ⌃↵" : "发送  ⌃↵";
+
+    /// <summary>页签索引（0=串口，1=TCP/UDP，2=S7，3=MQTT），切换时联动状态栏与协议构造器。</summary>
     public int SelectedTabIndex
     {
         get => _selectedTabIndex;
@@ -335,15 +492,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsSerialTab));
             OnPropertyChanged(nameof(IsNetworkTab));
             OnPropertyChanged(nameof(IsS7Tab));
+            OnPropertyChanged(nameof(IsMqttTab));
+            OnPropertyChanged(nameof(IsOpcUaTab));
+            OnPropertyChanged(nameof(SupportsModbusTab));
+            OnPropertyChanged(nameof(SendButtonText));
 
             // 日志/行数/占位提示都跟随页签切换到对应通道
             OnPropertyChanged(nameof(RxLineCount));
             OnPropertyChanged(nameof(HasLogContent));
 
-            // Modbus-RTU 是串口帧格式，网络与 S7 页签下不用它：切过去时自动收起
-            if (!IsSerialTab && Modbus.IsVisible)
+            // Modbus 只有串口（RTU）与 TCP/UDP（TCP）页签用得上，其余页签自动收起。
+            // 帧格式跟随页签：串口 → RTU，网络 → TCP（用户仍可在面板里手动改）
+            if (!IsSerialTab && !IsNetworkTab && Modbus.IsVisible)
             {
                 Modbus.IsVisible = false;
+            }
+
+            if (IsSerialTab)
+            {
+                Modbus.SelectedFrameMode = "Modbus RTU";
+            }
+            else if (IsNetworkTab)
+            {
+                Modbus.SelectedFrameMode = "Modbus TCP";
             }
 
             // S7 构造器只在 S7 页签下有意义
@@ -380,6 +551,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ConnectionSummary));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(StatusBrushKey));
+        OnPropertyChanged(nameof(MqttSubscriptionDisplay));
         RefreshCommands();
 
         if (!open)
@@ -598,7 +770,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event Action<LogChannel>? LogCleared;
 
     /// <summary>各通道独立的纯文本行缓存（供导出与行数统计，有上限，防止长时间运行内存膨胀）。</summary>
-    private readonly Queue<string>[] _logLines = [new(), new(), new()];
+    private readonly Queue<string>[] _logLines = [new(), new(), new(), new(), new()];
 
     public bool HasLogContent => _logLines[(int)CurrentChannel].Count > 0;
 
@@ -860,6 +1032,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand OpenS7Command { get; }
     public RelayCommand CloseS7Command { get; }
 
+    public RelayCommand OpenMqttCommand { get; }
+    public RelayCommand CloseMqttCommand { get; }
+    public RelayCommand MqttSubscribeCommand { get; }
+    public RelayCommand MqttUnsubscribeCommand { get; }
+    public RelayCommand MqttPublishCommand { get; }
+
     #endregion
 
     #region 主题
@@ -906,6 +1084,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             case 1: OpenNetwork(); break;
             case 2: OpenS7(); break;
+            case 3: OpenMqtt(); break;
+            case 4: OpenOpcUa(); break;
             default: OpenPort(); break;
         }
     }
@@ -917,6 +1097,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             case 1: CloseNetwork(); break;
             case 2: CloseS7(); break;
+            case 3: CloseMqtt(); break;
+            case 4: CloseOpcUa(); break;
             default: CloseSerial(); break;
         }
     }
@@ -1026,8 +1208,496 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// 打开一个传输，成功后登记为串口/网络/S7 连接。返回是否成功。
-    /// 三条连接互不影响，可同时保持。
+    /// 打开 MQTT 连接：建立到 Broker 的会话并按设置自动订阅主题。
+    /// </summary>
+    private void OpenMqtt()
+    {
+        if (_mqttTransport?.IsOpen == true)
+        {
+            ShowWarning("已连接", "MQTT 连接已存在，请先断开。");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(MqttSettingsModel.Host))
+        {
+            ShowWarning("参数无效", "请填写 Broker 地址。");
+            return;
+        }
+
+        var transport = new MqttTransport(MqttSettingsModel);
+
+        if (OpenTransport(transport, slot: 3, $"已打开 {transport.Description}"))
+        {
+            OnPropertyChanged(nameof(MqttSubscriptionDisplay));
+        }
+    }
+
+    /// <summary>订阅主题（支持 + 与 # 通配符，多个用分号分隔）。</summary>
+    private void SubscribeMqtt()
+    {
+        if (_mqttTransport is not MqttTransport transport)
+        {
+            return;
+        }
+
+        string topics = MqttSettingsModel.SubscribeTopic;
+
+        if (string.IsNullOrWhiteSpace(topics))
+        {
+            ShowWarning("参数无效", "请填写订阅主题。");
+            return;
+        }
+
+        try
+        {
+            transport.Subscribe(topics, (MQTTnet.Protocol.MqttQualityOfServiceLevel)
+                ParseQosLevel(MqttSettingsModel.SubscribeQos));
+
+            AppendSystem(LogChannel.MQTT, $"[{NowStamp()}] 已订阅主题 {topics}");
+            OnPropertyChanged(nameof(MqttSubscriptionDisplay));
+        }
+        catch (Exception ex)
+        {
+            ShowWarning("订阅失败", ex.Message);
+        }
+    }
+
+    /// <summary>取消订阅。</summary>
+    private void UnsubscribeMqtt()
+    {
+        if (_mqttTransport is not MqttTransport transport)
+        {
+            return;
+        }
+
+        string topics = MqttSettingsModel.SubscribeTopic;
+
+        if (string.IsNullOrWhiteSpace(topics))
+        {
+            return;
+        }
+
+        try
+        {
+            transport.Unsubscribe(topics);
+            AppendSystem(LogChannel.MQTT, $"[{NowStamp()}] 已取消订阅主题 {topics}");
+            OnPropertyChanged(nameof(MqttSubscriptionDisplay));
+        }
+        catch (Exception ex)
+        {
+            ShowWarning("取消订阅失败", ex.Message);
+        }
+    }
+
+    /// <summary>把发送区的内容发布到指定主题。</summary>
+    private void PublishMqtt()
+    {
+        if (_mqttTransport is not MqttTransport transport)
+        {
+            return;
+        }
+
+        string topic = MqttSettingsModel.PublishTopic;
+
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            ShowWarning("参数无效", "请填写发布主题。");
+            return;
+        }
+
+        byte[] payload = BuildSendPayload();
+
+        if (payload.Length == 0)
+        {
+            ShowWarning("内容为空", "没有要发布的内容。");
+            return;
+        }
+
+        try
+        {
+            transport.Publish(
+                topic,
+                payload,
+                ParseQosLevel(MqttSettingsModel.PublishQos),
+                MqttSettingsModel.Retain);
+
+            TxBytes = transport.TotalSent;
+
+            string preview = SendHexMode
+                ? HexConverter.ToHex(payload)
+                : Serial.Encoding.GetString(payload);
+
+            string prefix = ShowTimestamp ? $"[{NowStamp()}] " : string.Empty;
+            prefix += $"发送 {payload.Length} 字节到主题 {topic}：";
+
+            AppendEntry(LogChannel.MQTT, prefix, preview, LogKind.Send);
+        }
+        catch (Exception ex)
+        {
+            ShowWarning("发布失败", ex.Message);
+        }
+    }
+
+    /// <summary>连接 OPC UA 服务端（客户端模式）。</summary>
+    private void OpenOpcUa()
+    {
+        if (_opcUaTransport?.IsOpen == true)
+        {
+            ShowWarning("已连接", "OPC UA 会话已存在，请先断开。");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(OpcUaSettingsModel.EndpointUrl))
+        {
+            ShowWarning("参数无效", "请填写 OPC UA 端点地址。");
+            return;
+        }
+
+        var transport = new OpcUaClientTransport(OpcUaSettingsModel);
+
+        if (OpenTransport(transport, slot: 4, $"已连接 {transport.Description}"))
+        {
+            OnPropertyChanged(nameof(OpcUaReadResult));
+        }
+    }
+
+    /// <summary>读取节点值。</summary>
+    private void ReadOpcUaNode()
+    {
+        if (_opcUaTransport is not OpcUaClientTransport transport)
+        {
+            return;
+        }
+
+        string nodeId = OpcUaSettingsModel.NodeId;
+
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            ShowWarning("参数无效", "请填写 NodeId，例如 ns=2;s=Demo.Text。");
+            return;
+        }
+
+        try
+        {
+            Opc.Ua.DataValue value = transport.ReadNode(nodeId);
+            _lastOpcUaValue = value.Value;
+
+            string text = value.Value is null
+                ? "(空)"
+                : OpcUaVariable.FormatValue(value.Value);
+
+            OpcUaReadResult = $"{text}    类型 {value.Value?.GetType().Name ?? "?"}    状态 {value.StatusCode}    " +
+                              $"{value.SourceTimestamp.ToLocalTime():HH:mm:ss.fff}";
+
+            TxBytes = transport.TotalSent;
+            RxBytes = transport.TotalReceived;
+
+            AppendEntry(
+                LogChannel.OpcUa,
+                ShowTimestamp ? $"[{NowStamp()}] " : string.Empty,
+                $"读取 {nodeId} = {text}（{value.StatusCode}）",
+                LogKind.Receive);
+        }
+        catch (Exception ex)
+        {
+            ShowWarning("读取失败", ex.Message);
+        }
+    }
+
+    /// <summary>写入节点值，按上次读到的类型做转换。</summary>
+    private void WriteOpcUaNode()
+    {
+        if (_opcUaTransport is not OpcUaClientTransport transport)
+        {
+            return;
+        }
+
+        string nodeId = OpcUaSettingsModel.NodeId;
+        string raw = OpcUaSettingsModel.WriteValue;
+
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            ShowWarning("参数无效", "请填写 NodeId。");
+            return;
+        }
+
+        try
+        {
+            object value = ConvertOpcUaValue(raw, _lastOpcUaValue);
+            Opc.Ua.StatusCode status = transport.WriteNode(nodeId, value);
+
+            TxBytes = transport.TotalSent;
+
+            if (Opc.Ua.StatusCode.IsBad(status))
+            {
+                AppendSystem(LogChannel.OpcUa, $"[{NowStamp()}] 写入 {nodeId} 被拒绝：{status}");
+                ShowWarning("写入失败", $"服务端返回 {status}");
+                return;
+            }
+
+            AppendEntry(
+                LogChannel.OpcUa,
+                ShowTimestamp ? $"[{NowStamp()}] " : string.Empty,
+                $"写入 {nodeId} = {raw}（{status}）",
+                LogKind.Send);
+        }
+        catch (Exception ex)
+        {
+            ShowWarning("写入失败", ex.Message);
+        }
+    }
+
+    /// <summary>浏览 Objects 文件夹，把子节点写进日志，方便找 NodeId。</summary>
+    private void BrowseOpcUa()
+    {
+        if (_opcUaTransport is not OpcUaClientTransport transport)
+        {
+            return;
+        }
+
+        try
+        {
+            IReadOnlyList<string> nodes = transport.BrowseObjects();
+
+            if (nodes.Count == 0)
+            {
+                AppendSystem(LogChannel.OpcUa, $"[{NowStamp()}] Objects 下没有可浏览的子节点");
+                return;
+            }
+
+            AppendSystem(LogChannel.OpcUa, $"[{NowStamp()}] Objects 下的子节点（{nodes.Count} 个）：");
+
+            foreach (string node in nodes)
+            {
+                AppendEntry(LogChannel.OpcUa, "    ", node, LogKind.System);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowWarning("浏览失败", ex.Message);
+        }
+    }
+
+    /// <summary>启动内置服务端。</summary>
+    private void StartOpcUaServer()
+    {
+        if (_opcUaServer?.IsRunning == true)
+        {
+            return;
+        }
+
+        if (!int.TryParse(OpcUaSettingsModel.ServerPort?.Trim(), out int port) || port is < 1 or > 65535)
+        {
+            ShowWarning("参数无效", "端口应为 1–65535。");
+            return;
+        }
+
+        // 端口被别的程序监听时（如 4840 上的发现服务 LDS），套接字复用仍可能绑定成功，
+        // 导致连接随机落到别人手里——必须提前拦下来
+        if (System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
+                .GetActiveTcpListeners().Any(ep => ep.Port == port))
+        {
+            ShowWarning("端口被占用",
+                $"端口 {port} 已被其他程序监听（4840 常被 OPC UA 发现服务 LDS 占用）。\n" +
+                $"请换一个端口，或用 netstat -ano | findstr :{port} 查看占用进程。");
+            OpcUaServerStatus = "启动失败";
+            return;
+        }
+
+        try
+        {
+            _opcUaServer?.Dispose();
+            var server = new OpcUaServerHost();
+            server.Start(port);
+            _opcUaServer = server;
+
+            RefreshOpcUaVariables();
+
+            OpcUaServerStatus = $"运行中　{server.EndpointUrl}";
+
+            // 启动后把默认端点切到本机服务端，方便直接用客户端连自己
+            OpcUaSettingsModel.EndpointUrl = server.EndpointUrl;
+            OnPropertyChanged(nameof(OpcUaSettingsModel));
+
+            AppendSystem(LogChannel.OpcUa, $"[{NowStamp()}] 服务端已启动 {server.EndpointUrl}（安全策略 None，匿名登录）");
+            AppendSystem(LogChannel.OpcUa, $"[{NowStamp()}] 演示节点前缀 {server.DemoPrefix}，可在客户端模式连本机端点验证");
+            RefreshCommands();
+        }
+        catch (Exception ex)
+        {
+            _opcUaServer?.Dispose();
+            _opcUaServer = null;
+            OpcUaServerStatus = "启动失败";
+
+            // 端口被占是最常见的启动失败原因
+            string hint = ex.Message;
+
+            if (ex is System.Net.Sockets.SocketException ||
+                ex.Message.Contains("以一种访问权限不允许") ||
+                ex.Message.Contains("通常每种套接字地址") ||
+                ex.Message.Contains("only one usage"))
+            {
+                hint = $"端口 {port} 可能已被其他程序占用（4840 常被 OPC UA 发现服务 LDS 占用）。\n" +
+                       $"可以换个端口，或用 netstat -ano | findstr :{port} 查看占用进程。\n\n原始错误：{ex.Message}";
+            }
+
+            ShowWarning("服务端启动失败", hint);
+        }
+    }
+
+    /// <summary>停止内置服务端。</summary>
+    private void StopOpcUaServer()
+    {
+        if (_opcUaServer is null)
+        {
+            return;
+        }
+
+        _opcUaServer.Dispose();
+        _opcUaServer = null;
+
+        OpcUaVariables.Clear();
+        OpcUaServerStatus = "未启动";
+        AppendSystem(LogChannel.OpcUa, $"[{NowStamp()}] 服务端已停止");
+        RefreshCommands();
+    }
+
+    /// <summary>直接改服务端变量的值（本地模拟数据变化）。</summary>
+    private void WriteOpcUaVariable()
+    {
+        if (_opcUaServer is not { IsRunning: true } server)
+        {
+            return;
+        }
+
+        if (SelectedOpcUaVariable is not { } row)
+        {
+            ShowWarning("未选择变量", "请先在列表里选中一个变量。");
+            return;
+        }
+
+        try
+        {
+            object value = ConvertOpcUaValue(OpcUaServerValueText, row.DataType);
+            row.SetValue(value);
+
+            AppendEntry(
+                LogChannel.OpcUa,
+                ShowTimestamp ? $"[{NowStamp()}] " : string.Empty,
+                $"本地写入 {row.NodeId} = {OpcUaServerValueText}",
+                LogKind.Send);
+
+            RefreshOpcUaVariables();
+            TxBytes = 0;
+        }
+        catch (Exception ex)
+        {
+            ShowWarning("写入失败", ex.Message);
+        }
+    }
+
+    /// <summary>把服务端变量同步到界面列表。</summary>
+    private void RefreshOpcUaVariables()
+    {
+        if (_opcUaServer is not { IsRunning: true } server)
+        {
+            return;
+        }
+
+        IReadOnlyList<OpcUaVariable> variables = server.Variables;
+
+        if (OpcUaVariables.Count != variables.Count)
+        {
+            OpcUaVariables.Clear();
+            foreach (OpcUaVariable variable in variables)
+            {
+                OpcUaVariables.Add(new OpcUaVariableRow(variable));
+            }
+
+            SelectedOpcUaVariable ??= OpcUaVariables.FirstOrDefault();
+            return;
+        }
+
+        foreach (OpcUaVariableRow row in OpcUaVariables)
+        {
+            row.Refresh();
+        }
+    }
+
+    /// <summary>把文本按目标类型转换：数字 → 布尔 → 字符串。</summary>
+    private static object ConvertOpcUaValue(string text, object? typeHint)
+    {
+        string value = text?.Trim() ?? string.Empty;
+
+        string typeName = typeHint switch
+        {
+            int or long or short or byte => "整数",
+            double or float => "小数",
+            bool => "布尔",
+            string => "字符串",
+            _ => typeHint as string ?? typeHint?.GetType().Name ?? string.Empty,
+        };
+
+        if (typeName is "整数" or "Int32" or "Int64" or "Int16" or "UInt32")
+        {
+            if (!int.TryParse(value, out int i))
+            {
+                throw new ArgumentException($"需要整数，当前是“{text}”。");
+            }
+
+            return i;
+        }
+
+        if (typeName is "小数" or "Double" or "Single")
+        {
+            if (!double.TryParse(value, out double d))
+            {
+                throw new ArgumentException($"需要小数，当前是“{text}”。");
+            }
+
+            return d;
+        }
+
+        if (typeName is "布尔" or "Boolean")
+        {
+            if (!bool.TryParse(value, out bool b))
+            {
+                throw new ArgumentException("需要 true 或 false。");
+            }
+
+            return b;
+        }
+
+        if (typeName is "字符串" or "String")
+        {
+            return text ?? string.Empty;
+        }
+
+        // 没有类型线索时按最宽松的顺序尝试
+        if (int.TryParse(value, out int autoInt))
+        {
+            return autoInt;
+        }
+
+        if (double.TryParse(value, out double autoDouble))
+        {
+            return autoDouble;
+        }
+
+        if (bool.TryParse(value, out bool autoBool))
+        {
+            return autoBool;
+        }
+
+        return text ?? string.Empty;
+    }
+
+    /// <summary>上次读到的值，用来推断写入类型。</summary>
+    private object? _lastOpcUaValue;
+
+    /// <summary>
+    /// 打开一个传输，成功后登记为串口/网络/S7/MQTT 连接。返回是否成功。
+    /// 各条连接互不影响，可同时保持。
     /// </summary>
     private bool OpenTransport(ITransport transport, int slot, string logText)
     {
@@ -1052,6 +1722,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             case 2:
                 _s7Transport = transport;
                 break;
+            case 3:
+                _mqttTransport = transport;
+                break;
+            case 4:
+                _opcUaTransport = transport;
+                break;
             default:
                 _serialTransport = transport;
                 break;
@@ -1072,6 +1748,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         1 => LogChannel.Network,
         2 => LogChannel.S7,
+        3 => LogChannel.MQTT,
+        4 => LogChannel.OpcUa,
         _ => LogChannel.Serial
     };
 
@@ -1080,6 +1758,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void CloseNetwork() => CloseTransport(_networkTransport);
 
     private void CloseS7() => CloseTransport(_s7Transport);
+
+    private void CloseMqtt() => CloseTransport(_mqttTransport);
+
+    private void CloseOpcUa() => CloseTransport(_opcUaTransport);
 
     private void CloseTransport(ITransport? transport)
     {
@@ -1121,6 +1803,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(S7PduSizeDisplay));
             }
 
+            if (ReferenceEquals(transport, _mqttTransport))
+            {
+                _mqttTransport = null;
+                OnPropertyChanged(nameof(MqttSubscriptionDisplay));
+            }
+
             AppendSystem(channel, $"[{NowStamp()}] 已关闭 {description}");
             RefreshConnectionUi();
         }
@@ -1139,6 +1827,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return LogChannel.S7;
         }
 
+        if (ReferenceEquals(transport, _mqttTransport))
+        {
+            return LogChannel.MQTT;
+        }
+
+        if (ReferenceEquals(transport, _opcUaTransport))
+        {
+            return LogChannel.OpcUa;
+        }
+
         return LogChannel.Serial;
     }
 
@@ -1148,6 +1846,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         transport.DataReceived += data => OnDataReceived(transport.Tag, data);
         transport.ErrorOccurred += OnTransportError;
         transport.ConnectionStateChanged += connected => OnTransportStateChanged(transport, connected);
+
+        // 按主题分发的协议（MQTT）额外带主题信息
+        if (transport is ITopicTransport topicTransport)
+        {
+            topicTransport.TopicMessageReceived += message =>
+                OnTopicMessageReceived(transport.Tag, message);
+        }
     }
 
     private void OnTransportError(Exception ex)
@@ -1237,7 +1942,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void FlushReceiveBuffer()
     {
-        List<(string Tag, byte[] Data)> batches;
+        List<PendingRx> batches;
 
         lock (_pendingLock)
         {
@@ -1258,9 +1963,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         while (index < batches.Count)
         {
             string tag = batches[index].Tag;
+
+            // 带主题的消息（MQTT）逐条独立显示，不做合并
+            if (batches[index].Topic is not null)
+            {
+                PendingRx item = batches[index];
+                index++;
+
+                if (item.Data.Length == 0)
+                {
+                    continue;
+                }
+
+                AppendTopicLog(item);
+                continue;
+            }
+
             var merged = new List<byte>();
 
-            while (index < batches.Count && batches[index].Tag == tag)
+            while (index < batches.Count && batches[index].Tag == tag && batches[index].Topic is null)
             {
                 merged.AddRange(batches[index].Data);
                 index++;
@@ -1309,6 +2030,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RxRate = RxBytes / Math.Max(0.001, _uptime.Elapsed.TotalSeconds) / 1024.0;
     }
 
+    /// <summary>
+    /// MQTT 消息日志：前缀带主题名、QoS 与 retain 标志，
+    /// 主题不同的消息不会混在一起，便于分辨来源。
+    /// </summary>
+    private void AppendTopicLog(PendingRx item)
+    {
+        string body = ReceiveHexMode
+            ? HexConverter.ToHex(item.Data)
+            : Serial.Encoding.GetString(item.Data);
+
+        string prefix = ShowTimestamp ? $"[{NowStamp()}] " : string.Empty;
+        prefix += $"接收 {item.Data.Length} 字节 主题 {item.Topic}（QoS {item.Qos}";
+
+        if (item.Retain)
+        {
+            prefix += "，保留";
+        }
+
+        prefix += "）：";
+
+        AppendEntry(LogChannel.MQTT, prefix, body, LogKind.Receive);
+    }
+
     /// <summary>接收日志：每帧带上时间戳与本次收到的字节数，多路时带来源标签。</summary>
     private void AppendLog(string content, int byteCount, string? sourceTag = null)
     {
@@ -1325,11 +2069,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         AppendEntry(ChannelFromTag(sourceTag), prefix, content, LogKind.Receive);
     }
 
-    /// <summary>来源标签 → 日志通道：串口无标签，TCP/UDP 归网络，S7 归 S7。</summary>
+    /// <summary>来源标签 → 日志通道：串口无标签，TCP/UDP 归网络，S7 归 S7，MQTT 归 MQTT。</summary>
     private static LogChannel ChannelFromTag(string? tag) => tag switch
     {
         null or "串口" => LogChannel.Serial,
         "S7" => LogChannel.S7,
+        "MQTT" => LogChannel.MQTT,
+        "OPC UA" => LogChannel.OpcUa,
         _ => LogChannel.Network
     };
 
@@ -1874,6 +2620,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloseNetworkCommand.RaiseCanExecuteChanged();
         OpenS7Command.RaiseCanExecuteChanged();
         CloseS7Command.RaiseCanExecuteChanged();
+        OpenMqttCommand.RaiseCanExecuteChanged();
+        CloseMqttCommand.RaiseCanExecuteChanged();
+        MqttSubscribeCommand.RaiseCanExecuteChanged();
+        MqttUnsubscribeCommand.RaiseCanExecuteChanged();
+        MqttPublishCommand.RaiseCanExecuteChanged();
+        OpenOpcUaCommand.RaiseCanExecuteChanged();
+        CloseOpcUaCommand.RaiseCanExecuteChanged();
+        OpcUaReadCommand.RaiseCanExecuteChanged();
+        OpcUaWriteCommand.RaiseCanExecuteChanged();
+        OpcUaBrowseCommand.RaiseCanExecuteChanged();
+        StartOpcUaServerCommand.RaiseCanExecuteChanged();
+        StopOpcUaServerCommand.RaiseCanExecuteChanged();
+        WriteOpcUaVariableCommand.RaiseCanExecuteChanged();
         SendCommand.RaiseCanExecuteChanged();
         SendFileCommand.RaiseCanExecuteChanged();
     }
@@ -1908,8 +2667,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _ => "1"
     };
 
+    /// <summary>自测时静默弹窗并记录内容，避免模态框卡住测试。</summary>
+    internal static bool SuppressDialogs { get; set; }
+
+    internal static string? LastDialogTitle { get; private set; }
+
+    internal static string? LastDialogMessage { get; private set; }
+
     private void ShowWarning(string title, string message)
-        => MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+    {
+        LastDialogTitle = title;
+        LastDialogMessage = message;
+
+        if (SuppressDialogs)
+        {
+            return;
+        }
+
+        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
 
     private void ShowInfo(string title, string message)
         => MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1920,6 +2696,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _settings.Serial = Serial.Clone();
         _settings.Network = Network.Clone();
         _settings.S7 = S7SettingsModel.Clone();
+        _settings.Mqtt = MqttSettingsModel.Clone();
+        _settings.OpcUa = OpcUaSettingsModel.Clone();
         SettingsService.Save(_settings);
     }
 
@@ -1951,6 +2729,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _s7Transport.Dispose();
             _s7Transport = null;
         }
+
+        if (_opcUaServer is not null)
+        {
+            _opcUaServer.Dispose();
+            _opcUaServer = null;
+        }
+
+        if (_opcUaTransport is not null)
+        {
+            _opcUaTransport.Dispose();
+            _opcUaTransport = null;
+        }
+
+        if (_mqttTransport is not null)
+        {
+            _mqttTransport.Dispose();
+            _mqttTransport = null;
+        }
     }
 
     private void OnDataReceived(string tag, byte[] data)
@@ -1958,7 +2754,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         // 由传输的后台线程回调，只做入队，实际渲染交给 UI 定时器
         lock (_pendingLock)
         {
-            _pendingRx.Add((tag, data));
+            _pendingRx.Add(new PendingRx(tag, data, null, 0, false));
 
             // 防止极端速率下无限堆积导致内存膨胀
             int total = 0;
@@ -1979,6 +2775,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
                 _pendingRx.RemoveRange(0, removeCount);
             }
+        }
+    }
+
+    /// <summary>收到带主题的消息（MQTT）。主题、QoS、retain 一并入队显示。</summary>
+    private void OnTopicMessageReceived(string tag, TopicMessage message)
+    {
+        lock (_pendingLock)
+        {
+            _pendingRx.Add(new PendingRx(tag, message.Payload, message.Topic, message.Qos, message.Retain));
         }
     }
 

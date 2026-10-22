@@ -10,7 +10,13 @@ public enum LogChannel
     Network = 1,
 
     /// <summary>S7 西门子页签。</summary>
-    S7 = 2
+    S7 = 2,
+
+    /// <summary>MQTT 页签。</summary>
+    MQTT = 3,
+
+    /// <summary>OPC UA 页签。</summary>
+    OpcUa = 4
 }
 
 /// <summary>日志条目的类别，决定显示颜色。</summary>

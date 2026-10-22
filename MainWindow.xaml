@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:WPF_UartAssist.ViewModels"
         mc:Ignorable="d"
-        Title="WPF 串口助手" Height="760" Width="1180"
+        Title="WPF 串口助手" Height="760" Width="1290"
         MinHeight="560" MinWidth="900"
         Background="{DynamicResource BgBrush}"
         FontFamily="{StaticResource UiFont}"
@@ -42,6 +42,8 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -121,45 +123,45 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                        <WrapPanel x:Name="SerialParams" Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="串口" Style="{StaticResource LabelText}" />
                             <ComboBox ItemsSource="{Binding Ports}"
                                       SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
-                                      MinWidth="92" Margin="0,0,6,0" />
+                                      MinWidth="86" Margin="0,0,6,0" />
 
                             <TextBlock Text="波特率" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
                             <ComboBox ItemsSource="{Binding BaudRates}"
                                       SelectedItem="{Binding SelectedBaudRate, Mode=TwoWay}"
-                                      MinWidth="96" Margin="0,0,6,0" />
+                                      MinWidth="90" Margin="0,0,6,0" />
 
                             <TextBlock Text="数据位" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
                             <ComboBox ItemsSource="{Binding DataBitsList}"
                                       SelectedItem="{Binding SelectedDataBits, Mode=TwoWay}"
-                                      MinWidth="60" Margin="0,0,6,0" />
+                                      MinWidth="56" Margin="0,0,6,0" />
 
                             <TextBlock Text="校验" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
                             <ComboBox ItemsSource="{Binding ParityList}"
                                       SelectedItem="{Binding SelectedParity, Mode=TwoWay}"
-                                      MinWidth="92" Margin="0,0,6,0"
+                                      MinWidth="84" Margin="0,0,6,0"
                                       ItemTemplate="{StaticResource ParityItemTemplate}" />
 
                             <TextBlock Text="停止位" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
                             <ComboBox ItemsSource="{Binding StopBitsList}"
                                       SelectedItem="{Binding SelectedStopBits, Mode=TwoWay}"
-                                      MinWidth="76" Margin="0,0,6,0"
+                                      MinWidth="72" Margin="0,0,6,0"
                                       ItemTemplate="{StaticResource StopBitsItemTemplate}" />
 
                             <TextBlock Text="流控" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
                             <ComboBox ItemsSource="{Binding HandshakeList}"
                                       SelectedItem="{Binding SelectedHandshake, Mode=TwoWay}"
-                                      MinWidth="140" Margin="0,0,6,0"
+                                      MinWidth="118" Margin="0,0,6,0"
                                       ItemTemplate="{StaticResource HandshakeItemTemplate}" />
 
                             <TextBlock Text="编码" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
                             <ComboBox ItemsSource="{Binding EncodingOptions}"
                                       DisplayMemberPath="Name"
                                       SelectedItem="{Binding SelectedEncoding, Mode=TwoWay}"
-                                      MinWidth="86" Margin="0,0,6,0" />
+                                      MinWidth="80" Margin="0,0,6,0" />
 
                             <Button Content="刷新" Style="{StaticResource GhostButton}"
                                     Command="{Binding RefreshPortsCommand}" Margin="8,0,0,0" />
@@ -184,7 +186,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                        <WrapPanel x:Name="NetworkParams" Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="方式" Style="{StaticResource LabelText}" />
                             <ComboBox ItemsSource="{Binding NetworkModes}"
                                       SelectedItem="{Binding SelectedNetworkMode, Mode=TwoWay}"
@@ -234,7 +236,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                        <WrapPanel x:Name="S7Params" Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="PLC 地址" Style="{StaticResource LabelText}" />
                             <TextBox Text="{Binding S7SettingsModel.Host, UpdateSourceTrigger=PropertyChanged}"
                                      Width="130" ToolTip="PLC 的 IP 或主机名" />
@@ -264,6 +266,132 @@
                                     MinWidth="96" />
                             <Button Content="断开" Style="{StaticResource BaseButton}"
                                     Command="{Binding CloseS7Command}" MinWidth="76" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="MQTT">
+                <Border Style="{StaticResource PanelBorder}" Padding="14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <WrapPanel x:Name="MqttParams" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Broker" Style="{StaticResource LabelText}" />
+                            <TextBox Text="{Binding MqttSettingsModel.Host, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="112" ToolTip="Broker 的 IP 或主机名，如 127.0.0.1 或 broker.emqx.io" />
+
+                            <TextBlock Text="端口" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding MqttSettingsModel.Port, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="66" ToolTip="明文 1883，TLS 8883" />
+
+                            <TextBlock Text="客户端 ID" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding MqttSettingsModel.ClientId, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="104" ToolTip="留空则自动生成一个带进程号的 ID" />
+
+                            <TextBlock Text="用户名" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding MqttSettingsModel.UserName, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="78" ToolTip="留空表示匿名连接" />
+
+                            <TextBlock Text="密码" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding MqttSettingsModel.Password, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="78" ToolTip="留空表示不带密码。密码以明文保存在本机 settings.json" />
+
+                            <CheckBox Content="TLS" IsChecked="{Binding MqttSettingsModel.UseTls}"
+                                      Margin="10,0,6,0" VerticalAlignment="Center"
+                                      ToolTip="启用后走加密连接（默认放行自签名证书）" />
+
+                            <TextBlock Text="协议" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <ComboBox ItemsSource="{Binding MqttProtocolVersions}"
+                                      SelectedItem="{Binding MqttSettingsModel.ProtocolVersion, Mode=TwoWay}"
+                                      MinWidth="76" Margin="0,0,6,0" />
+
+                            <TextBlock Text="保活" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding MqttSettingsModel.KeepAlive, UpdateSourceTrigger=LostFocus}"
+                                     Width="50" ToolTip="秒，0 表示不保活" />
+                            <TextBlock Text="s" Style="{StaticResource LabelText}" Margin="4,0,0,0" />
+                        </WrapPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button Content="连接" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding OpenMqttCommand}" Margin="0,0,8,0"
+                                    MinWidth="96" />
+                            <Button Content="断开" Style="{StaticResource BaseButton}"
+                                    Command="{Binding CloseMqttCommand}" MinWidth="76" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="OPC UA">
+                <Border Style="{StaticResource PanelBorder}" Padding="14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="方式" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding OpcUaModes}"
+                                      SelectedItem="{Binding SelectedOpcUaMode, Mode=TwoWay}"
+                                      MinWidth="86" Margin="0,0,6,0" />
+
+                            <!-- 客户端参数 -->
+                            <TextBlock Text="端点" Style="{StaticResource LabelText}"
+                                       Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBox Text="{Binding OpcUaSettingsModel.EndpointUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="252" ToolTip="如 opc.tcp://127.0.0.1:4840"
+                                     Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <CheckBox Content="用户名登录" IsChecked="{Binding OpcUaSettingsModel.UseSecurity}"
+                                      Margin="10,0,10,0" VerticalAlignment="Center"
+                                      ToolTip="不勾选则匿名登录"
+                                      Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <TextBlock Text="用户名" Style="{StaticResource LabelText}"
+                                       Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBox Text="{Binding OpcUaSettingsModel.UserName, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="88" Margin="0,0,6,0"
+                                     Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <TextBlock Text="密码" Style="{StaticResource LabelText}"
+                                       Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBox Text="{Binding OpcUaSettingsModel.Password, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="88"
+                                     ToolTip="密码以明文保存在本机 settings.json"
+                                     Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <!-- 服务端参数 -->
+                            <TextBlock Text="监听端口" Style="{StaticResource LabelText}"
+                                       Visibility="{Binding IsOpcUaServerMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBox Text="{Binding OpcUaSettingsModel.ServerPort, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="66" ToolTip="1–65535，默认 4840"
+                                     Visibility="{Binding IsOpcUaServerMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <TextBlock Text="{Binding OpcUaServerStatus}"
+                                       Foreground="{DynamicResource TextDimBrush}"
+                                       FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0"
+                                       Visibility="{Binding IsOpcUaServerMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        </WrapPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button Content="连接" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding OpenOpcUaCommand}" Margin="0,0,8,0" MinWidth="88"
+                                    Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <Button Content="断开" Style="{StaticResource BaseButton}"
+                                    Command="{Binding CloseOpcUaCommand}" MinWidth="76"
+                                    Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <Button Content="启动服务端" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding StartOpcUaServerCommand}" Margin="0,0,8,0" MinWidth="96"
+                                    Visibility="{Binding IsOpcUaServerMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <Button Content="停止" Style="{StaticResource BaseButton}"
+                                    Command="{Binding StopOpcUaServerCommand}" MinWidth="76"
+                                    Visibility="{Binding IsOpcUaServerMode, Converter={StaticResource BoolToVisibilityConverter}}" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -326,7 +454,7 @@
             </Border>
         </Grid>
 
-        <!-- ==================== Modbus-RTU 报文构造器 ==================== -->
+        <!-- ==================== Modbus 报文构造器（RTU / TCP） ==================== -->
         <Border Grid.Row="3" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
                 Visibility="{Binding Modbus.IsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
             <Grid>
@@ -336,9 +464,22 @@
                 </Grid.RowDefinitions>
 
                 <WrapPanel Grid.Row="0" VerticalAlignment="Center">
-                    <TextBlock Text="从设备 ID" Style="{StaticResource LabelText}" />
+                    <TextBlock Text="帧格式" Style="{StaticResource LabelText}" />
+                    <ComboBox ItemsSource="{Binding Modbus.FrameModes}"
+                              SelectedItem="{Binding Modbus.SelectedFrameMode, Mode=TwoWay}"
+                              MinWidth="112" Margin="0,0,10,0"
+                              ToolTip="串口用 RTU（CRC16），以太网用 TCP（MBAP，无 CRC）" />
+
+                    <TextBlock Text="{Binding Modbus.UnitLabel}" Style="{StaticResource LabelText}" />
                     <TextBox Text="{Binding Modbus.SlaveIdText, UpdateSourceTrigger=PropertyChanged}"
-                             Width="64" ToolTip="1–247，支持十进制或 0x 十六进制" />
+                             Width="64" ToolTip="RTU 从站地址 1–247；TCP 单元号 0–255。支持十进制或 0x 十六进制" />
+
+                    <TextBlock Text="事务号" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               ToolTip="MBAP 事务号，发送后自动 +1"
+                               Visibility="{Binding Modbus.IsTcpFrame, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding Modbus.TransactionIdText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="60"
+                             Visibility="{Binding Modbus.IsTcpFrame, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                     <TextBlock Text="功能号" Style="{StaticResource LabelText}" Margin="12,0,6,0" />
                     <ComboBox ItemsSource="{Binding Modbus.FunctionCodes}"
@@ -385,11 +526,15 @@
                                    VerticalAlignment="Center"
                                    Visibility="{Binding Modbus.HasFrameError, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                        <TextBlock Text="地址或数值支持十进制或 0x 十六进制"
-                                   Foreground="{DynamicResource TextDimBrush}"
-                                   FontSize="11"
-                                   VerticalAlignment="Center"
-                                   Visibility="{Binding Modbus.HasFrameError, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        <StackPanel Orientation="Horizontal"
+                                    Visibility="{Binding Modbus.HasFrameError, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <TextBlock Text="{Binding Modbus.FrameNote}"
+                                       Foreground="{DynamicResource TextDimBrush}"
+                                       FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="　地址/数值支持十进制或 0x 十六进制"
+                                       Foreground="{DynamicResource TextDimBrush}"
+                                       FontSize="11" VerticalAlignment="Center" />
+                        </StackPanel>
 
                         <Button Content="复制" Style="{StaticResource GhostButton}"
                                 Command="{Binding Modbus.CopyFrameCommand}" Margin="12,0,0,0" />
@@ -504,8 +649,179 @@
             </Grid>
         </Border>
 
+        <!-- ==================== MQTT 主题（发布 / 订阅） ==================== -->
+        <Border Grid.Row="5" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
+                Visibility="{Binding IsMqttTab, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <WrapPanel x:Name="MqttTopicParams" Grid.Row="0" VerticalAlignment="Center">
+                    <TextBlock Text="订阅主题" Style="{StaticResource LabelText}" />
+                    <TextBox Text="{Binding MqttSettingsModel.SubscribeTopic, UpdateSourceTrigger=PropertyChanged}"
+                             Width="140" ToolTip="支持 + 与 # 通配符，多个主题用分号分隔" />
+
+                    <TextBlock Text="QoS" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                    <ComboBox ItemsSource="{Binding MqttQosLevels}"
+                              SelectedItem="{Binding MqttSettingsModel.SubscribeQos, Mode=TwoWay}"
+                              MinWidth="110" Margin="0,0,8,0" />
+
+                    <Button Content="订阅" Style="{StaticResource BaseButton}"
+                            Command="{Binding MqttSubscribeCommand}" MinWidth="66" Margin="0,0,6,0" />
+                    <Button Content="取消订阅" Style="{StaticResource GhostButton}"
+                            Command="{Binding MqttUnsubscribeCommand}" MinWidth="76" />
+
+                    <Border Style="{StaticResource Separator}" />
+
+                    <TextBlock Text="发布主题" Style="{StaticResource LabelText}" Margin="6,0,6,0" />
+                    <TextBox Text="{Binding MqttSettingsModel.PublishTopic, UpdateSourceTrigger=PropertyChanged}"
+                             Width="150" ToolTip="发送区的内容发布到这个主题" />
+
+                    <TextBlock Text="QoS" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                    <ComboBox ItemsSource="{Binding MqttQosLevels}"
+                              SelectedItem="{Binding MqttSettingsModel.PublishQos, Mode=TwoWay}"
+                              MinWidth="110" Margin="0,0,8,0" />
+
+                    <CheckBox Content="保留消息" IsChecked="{Binding MqttSettingsModel.Retain}"
+                              Margin="0,0,12,0" VerticalAlignment="Center"
+                              ToolTip="retain 标志：Broker 会保存最后一条消息，新订阅者立刻收到" />
+
+                    <CheckBox Content="自动重连" IsChecked="{Binding MqttSettingsModel.AutoReconnect}"
+                              Margin="0,0,12,0" VerticalAlignment="Center"
+                              ToolTip="意外断线后每 3 秒重试一次" />
+
+                    <CheckBox Content="清除会话" IsChecked="{Binding MqttSettingsModel.CleanSession}"
+                              VerticalAlignment="Center"
+                              ToolTip="clean session：不保留离线期间的订阅与排队消息" />
+                </WrapPanel>
+
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="已订阅"
+                               Foreground="{DynamicResource TextDimBrush}"
+                               FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding MqttSubscriptionDisplay}"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="12" VerticalAlignment="Center"
+                               Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+
+                    <TextBlock Grid.Column="2"
+                               Text="发送区内容按「发布主题」发出；收到订阅主题的消息会按主题分条显示"
+                               Foreground="{DynamicResource TextDimBrush}"
+                               FontSize="11" VerticalAlignment="Center" Margin="16,0,0,0" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ==================== OPC UA 节点读写 / 服务端变量 ==================== -->
+        <Border Grid.Row="6" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
+                Visibility="{Binding IsOpcUaTab, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
+                <!-- 客户端：按 NodeId 读写 -->
+                <Grid Visibility="{Binding IsOpcUaClientMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <WrapPanel Grid.Row="0" VerticalAlignment="Center">
+                        <TextBlock Text="NodeId" Style="{StaticResource LabelText}" />
+                        <TextBox Text="{Binding OpcUaSettingsModel.NodeId, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="220" FontFamily="{StaticResource MonoFont}"
+                                 ToolTip="如 ns=2;s=Demo.Text" />
+
+                        <Button Content="读取" Style="{StaticResource BaseButton}"
+                                Command="{Binding OpcUaReadCommand}" MinWidth="66" Margin="8,0,6,0" />
+                        <Button Content="浏览 Objects" Style="{StaticResource GhostButton}"
+                                Command="{Binding OpcUaBrowseCommand}" MinWidth="96" />
+
+                        <Border Style="{StaticResource Separator}" />
+
+                        <TextBlock Text="写入值" Style="{StaticResource LabelText}" Margin="6,0,6,0" />
+                        <TextBox Text="{Binding OpcUaSettingsModel.WriteValue, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="170" FontFamily="{StaticResource MonoFont}"
+                                 ToolTip="按节点类型自动转换：数字 / true|false / 文本" />
+
+                        <Button Content="写入" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding OpcUaWriteCommand}" MinWidth="66" Margin="8,0,0,0" />
+                    </WrapPanel>
+
+                    <TextBlock Grid.Row="1" Text="{Binding OpcUaReadResult}"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextDimBrush}"
+                               Margin="0,10,0,0"
+                               TextWrapping="Wrap" />
+                </Grid>
+
+                <!-- 服务端：演示地址空间变量 -->
+                <Grid Visibility="{Binding IsOpcUaServerMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <WrapPanel Grid.Row="0" VerticalAlignment="Center">
+                        <TextBlock Text="变量" Style="{StaticResource LabelText}" />
+                        <ComboBox ItemsSource="{Binding OpcUaVariables}"
+                                  SelectedItem="{Binding SelectedOpcUaVariable, Mode=TwoWay}"
+                                  DisplayMemberPath="Display"
+                                  MinWidth="170" Margin="0,0,6,0" />
+
+                        <TextBlock Text="值" Style="{StaticResource LabelText}" />
+                        <TextBox Text="{Binding OpcUaServerValueText, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="170" FontFamily="{StaticResource MonoFont}"
+                                 ToolTip="按变量类型转换：数字 / true|false / 文本" />
+
+                        <Button Content="写入变量" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding WriteOpcUaVariableCommand}" MinWidth="86" Margin="8,0,0,0" />
+
+                        <TextBlock Text="外部客户端写入后这里会自动刷新"
+                                   Foreground="{DynamicResource TextDimBrush}"
+                                   FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0" />
+                    </WrapPanel>
+
+                    <ItemsControl Grid.Row="1" ItemsSource="{Binding OpcUaVariables}" Margin="0,10,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource LogBackgroundBrush}"
+                                        CornerRadius="4" Padding="8,4" Margin="0,0,8,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                        <TextBlock Text=" = " FontSize="12"
+                                                   Foreground="{DynamicResource TextDimBrush}" />
+                                        <TextBlock Text="{Binding Value}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                        <TextBlock Text="{Binding DataType, StringFormat=（{0}）}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </Grid>
+        </Border>
+
         <!-- ==================== 发送区 ==================== -->
-        <Border Grid.Row="5" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12">
+        <Border Grid.Row="7" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
+                Visibility="{Binding IsOpcUaTab, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -527,11 +843,11 @@
 
                     <Border Style="{StaticResource Separator}" />
 
-                    <CheckBox Content="Modbus-RTU 构造器"
+                    <CheckBox Content="{Binding Modbus.CheckboxText}"
                               IsChecked="{Binding Modbus.IsVisible}"
-                              ToolTip="生成带 CRC16 的 Modbus-RTU 请求帧（仅串口页签可用）"
+                              ToolTip="串口页签生成带 CRC16 的 Modbus-RTU 帧，TCP/UDP 页签生成 MBAP 头的 Modbus TCP 帧"
                               Margin="6,0,14,0"
-                              Visibility="{Binding IsSerialTab, Converter={StaticResource BoolToVisibilityConverter}}" />
+                              Visibility="{Binding SupportsModbusTab, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                     <CheckBox Content="S7 构造器"
                               IsChecked="{Binding S7.IsVisible}"
@@ -603,7 +919,7 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top">
-                        <Button Content="发送  ⌃↵"
+                        <Button Content="{Binding SendButtonText}"
                                 Style="{StaticResource PrimaryButton}"
                                 Command="{Binding SendCommand}"
                                 Width="104" Height="38"
@@ -614,7 +930,7 @@
         </Border>
 
         <!-- ==================== 状态栏 ==================== -->
-        <Border Grid.Row="6" Background="{DynamicResource PanelBrush}" Padding="16,6" Margin="0,12,0,0">
+        <Border Grid.Row="8" Background="{DynamicResource PanelBrush}" Padding="16,6" Margin="0,12,0,0">
             <Grid>
                 <TextBlock Text="{Binding ConnectionSummary}"
                            Foreground="{DynamicResource TextDimBrush}"
