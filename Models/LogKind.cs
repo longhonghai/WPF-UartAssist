@@ -16,7 +16,10 @@ public enum LogChannel
     MQTT = 3,
 
     /// <summary>OPC UA 页签。</summary>
-    OpcUa = 4
+    OpcUa = 4,
+
+    /// <summary>DoIP 页签。</summary>
+    DoIp = 5
 }
 
 /// <summary>日志条目的类别，决定显示颜色。</summary>

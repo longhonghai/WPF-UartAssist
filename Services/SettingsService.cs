@@ -24,6 +24,9 @@ public sealed class AppSettings
     /// <summary>OPC UA 连接参数与内置服务端端口。</summary>
     public OpcUaSettings OpcUa { get; set; } = new();
 
+    /// <summary>DoIP 网关地址与端口。</summary>
+    public DoIpSettings DoIp { get; set; } = new();
+
     /// <summary>MQTT 连接与主题参数。</summary>
     public MqttSettings Mqtt { get; set; } = new();
 

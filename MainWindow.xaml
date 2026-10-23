@@ -48,6 +48,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- ==================== 标题栏 ==================== -->
@@ -392,6 +393,38 @@
                             <Button Content="停止" Style="{StaticResource BaseButton}"
                                     Command="{Binding StopOpcUaServerCommand}" MinWidth="76"
                                     Visibility="{Binding IsOpcUaServerMode, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="DoIP">
+                <Border Style="{StaticResource PanelBorder}" Padding="14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <WrapPanel x:Name="DoIpParams" Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="网关地址" Style="{StaticResource LabelText}" />
+                            <TextBox Text="{Binding DoIpSettingsModel.Host, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="150" ToolTip="诊断网关 IP 或主机名，如 192.168.1.10" />
+
+                            <TextBlock Text="端口" Style="{StaticResource LabelText}" Margin="8,0,6,0" />
+                            <TextBox Text="{Binding DoIpSettingsModel.Port, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="66" ToolTip="ISO 13400 默认 13400" />
+
+                            <TextBlock Text="协议版本 0x02（ISO 13400-2）　连接后先发 0005 路由激活，再发 8001 诊断报文"
+                                       Foreground="{DynamicResource TextDimBrush}"
+                                       FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" />
+                        </WrapPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button Content="连接" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding OpenDoIpCommand}" Margin="0,0,8,0" MinWidth="96" />
+                            <Button Content="断开" Style="{StaticResource BaseButton}"
+                                    Command="{Binding CloseDoIpCommand}" MinWidth="76" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -819,8 +852,143 @@
             </Grid>
         </Border>
 
+        <!-- ==================== DoIP（ISO 13400）报文构造器 ==================== -->
+        <Border Grid.Row="7" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="10,8"
+                Visibility="{Binding ShowDoIpPanel, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <WrapPanel x:Name="DoIpFrameParams" Grid.Row="0" VerticalAlignment="Center">
+                    <TextBlock Text="报文" Style="{StaticResource LabelText}" />
+                    <ComboBox ItemsSource="{Binding DoIp.Kinds}"
+                              SelectedItem="{Binding DoIp.SelectedKind, Mode=TwoWay}"
+                              MinWidth="150" Margin="0,0,10,0" />
+
+                    <TextBlock Text="源地址" Style="{StaticResource LabelText}" />
+                    <TextBox Text="{Binding DoIp.SourceAddressText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="76" FontFamily="{StaticResource MonoFont}"
+                             ToolTip="测试端地址，如 0x0E00" />
+
+                    <TextBlock Text="目标地址" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               Visibility="{Binding DoIp.NeedsUds, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding DoIp.TargetAddressText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="76" FontFamily="{StaticResource MonoFont}"
+                             ToolTip="目标 ECU 地址，如 0x1001"
+                             Visibility="{Binding DoIp.NeedsUds, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="激活类型" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               Visibility="{Binding DoIp.NeedsActivation, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <ComboBox ItemsSource="{Binding DoIp.ActivationTypes}"
+                              SelectedItem="{Binding DoIp.SelectedActivation, Mode=TwoWay}"
+                              MinWidth="130"
+                              Visibility="{Binding DoIp.NeedsActivation, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="UDS" Style="{StaticResource LabelText}" Margin="12,0,6,0"
+                               Visibility="{Binding DoIp.NeedsUds, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBox Text="{Binding DoIp.UdsText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="150" FontFamily="{StaticResource MonoFont}"
+                             ToolTip="UDS 请求，如 22 F1 90 / 10 03 / 3E 00"
+                             Visibility="{Binding DoIp.NeedsUds, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <Border Style="{StaticResource Separator}" />
+
+                    <Button Content="复制" Style="{StaticResource GhostButton}"
+                            Command="{Binding DoIp.CopyFrameCommand}" Margin="6,0,0,0" />
+                    <Button Content="清除" Style="{StaticResource GhostButton}"
+                            Command="{Binding DoIp.ClearFieldsCommand}" Margin="6,0,0,0" />
+                    <Button Content="路由激活"
+                            Style="{StaticResource GhostButton}"
+                            Command="{Binding DoIp.SendRoutingActivationCommand}"
+                            MinWidth="86" Margin="6,0,0,0"
+                            ToolTip="按当前源地址直接发送 0005 路由激活请求" />
+                    <Button Content="发送报文"
+                            Style="{StaticResource PrimaryButton}"
+                            Command="{Binding DoIp.SendFrameCommand}"
+                            MinWidth="96" Margin="6,0,0,0" />
+                </WrapPanel>
+
+                <!-- 只在参数非法时出现，正常状态下不占高度 -->
+                <TextBlock Grid.Row="1"
+                           Text="{Binding DoIp.FrameError}"
+                           Foreground="{DynamicResource DangerBrush}"
+                           FontSize="11"
+                           Margin="0,6,0,0"
+                           Visibility="{Binding DoIp.HasFrameError, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                <!-- UDS 服务构造器：按分类选服务，自动生成参数输入，发出去会包进 0x8001 -->
+                <Grid Grid.Row="2" Margin="0,8,0,0">
+                    <WrapPanel Grid.Row="0" VerticalAlignment="Center">
+                        <TextBlock Text="UDS 服务" Style="{StaticResource LabelText}"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" />
+
+                        <ComboBox ItemsSource="{Binding Uds.Categories}"
+                                  SelectedItem="{Binding Uds.SelectedCategory, Mode=TwoWay}"
+                                  MinWidth="208" Margin="0,0,6,0"
+                                  ToolTip="按功能分类" />
+
+                        <ComboBox ItemsSource="{Binding Uds.Services}"
+                                  SelectedItem="{Binding Uds.SelectedService, Mode=TwoWay}"
+                                  MinWidth="236"
+                                  ToolTip="该分类下的服务">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Display}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+
+                        <Border Style="{StaticResource Separator}" />
+
+                        <ItemsControl ItemsSource="{Binding Uds.Params}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                        <TextBlock Text="{Binding Label}"
+                                                   Style="{StaticResource LabelText}"
+                                                   ToolTip="{Binding Tip}" />
+                                        <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                                 Width="{Binding Width}"
+                                                 FontFamily="{StaticResource MonoFont}"
+                                                 ToolTip="{Binding Tip}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button Content="发送 UDS"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding Uds.SendCommand}"
+                                MinWidth="92" Margin="4,0,10,0"
+                                ToolTip="把这段 UDS 包进 DoIP 0x8001 诊断报文发出" />
+
+                        <TextBlock Text="{Binding Uds.Preview}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock Text="{Binding Uds.Hint}"
+                                   Foreground="{DynamicResource TextDimBrush}"
+                                   FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                   Visibility="{Binding Uds.HasError, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                        <TextBlock Text="{Binding Uds.Error}"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                   Visibility="{Binding Uds.HasError, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </WrapPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
         <!-- ==================== 发送区 ==================== -->
-        <Border Grid.Row="7" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
+        <Border Grid.Row="8" Margin="12,12,12,0" Style="{StaticResource PanelBorder}" Padding="12"
                 Visibility="{Binding IsOpcUaTab, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid>
                 <Grid.RowDefinitions>
@@ -854,6 +1022,12 @@
                               ToolTip="生成 ISO-on-TCP / S7comm 报文（仅 S7 页签可用）"
                               Margin="0,0,14,0"
                               Visibility="{Binding IsS7Tab, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <CheckBox Content="DoIP 构造器"
+                              IsChecked="{Binding DoIp.IsVisible}"
+                              ToolTip="展开/收起 DoIP 与 UDS 报文构造器，收起后日志区更大"
+                              Margin="0,0,14,0"
+                              Visibility="{Binding IsDoIpTab, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                     <Border Style="{StaticResource Separator}" />
 
@@ -930,7 +1104,7 @@
         </Border>
 
         <!-- ==================== 状态栏 ==================== -->
-        <Border Grid.Row="8" Background="{DynamicResource PanelBrush}" Padding="16,6" Margin="0,12,0,0">
+        <Border Grid.Row="9" Background="{DynamicResource PanelBrush}" Padding="16,6" Margin="0,12,0,0">
             <Grid>
                 <TextBlock Text="{Binding ConnectionSummary}"
                            Foreground="{DynamicResource TextDimBrush}"

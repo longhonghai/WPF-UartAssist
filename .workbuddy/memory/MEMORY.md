@@ -40,10 +40,10 @@ WPF 串口调试助手，对标 UartAssist。net9.0-windows + WPF + MVVM，无�
 - 单文件冷启动 ~2.4s 属预期（每个版本首次运行解压到 %TEMP%\.net），之后恢复正常。
 - 测量启动：外部 `Start-Process` + 40ms 轮询 `MainWindowHandle != 0`，勿用 `timeout` 返回值判断。
 
-## 传输层（串口 / TCP / UDP / S7 / MQTT / OPC UA）
+## 传输层（串口 / TCP / UDP / S7 / MQTT / OPC UA / DoIP）
 - `ITransport` 统一抽象：DataReceived / ErrorOccurred / ConnectionStateChanged + IsOpen / TotalReceived / TotalSent / Description + Open() / Close() / Send()。
   ViewModel 只持有 `_transport`，收发管道（队列→50ms 批量→日志→统计）完全与传输无关。
-- 五条连接并存：`_serialTransport`(0) / `_networkTransport`(1) / `_s7Transport`(2) / `_mqttTransport`(3) / `_opcUaTransport`(4)，
+- 六条连接并存：`_serialTransport`(0) / `_networkTransport`(1) / `_s7Transport`(2) / `_mqttTransport`(3) / `_opcUaTransport`(4) / `_doIpTransport`(5)，
   另有独立的 `_opcUaServer`（`OpcUaServerHost`，内置服务端，不算通道），
   页签索引 == `LogChannel` 值 == 槽位号，三者必须始终对齐。
 - **加新通道时必查**：`MainWindow._documents`、`MainWindow._widestLineWidths`、`MainViewModel._logLines`、
@@ -54,8 +54,8 @@ WPF 串口调试助手，对标 UartAssist。net9.0-windows + WPF + MVVM，无�
   这类传输**不投递** `DataReceived`，否则同一条消息记两遍。
 - **TCP 客户端连接超时**：`ConnectAsync().Wait(5000)` 返回 false 时必须 `Dispose` client 才能取消，否则连接任务继续占用。
 - 意外断线走 `ConnectionStateChanged(false)` → `_dispatcher.BeginInvoke`；主动关闭时先判 `IsOpen`，避免重复提示。
-- 顶部参数区是 TabControl（串口 / TCP·UDP / S7 / MQTT / OPC UA），样式 `MainTabControl`、`MainTabItem` 在 Styles.xaml。
-- 主 Grid 行：0 标题 / 1 页签 / 2 日志(*) / 3 Modbus 面板 / 4 S7 面板 / 5 MQTT 主题 / 6 OPC UA 面板 / 7 发送区 / 8 状态栏。
+- 顶部参数区是 TabControl（串口 / TCP·UDP / S7 / MQTT / OPC UA / DoIP），样式 `MainTabControl`、`MainTabItem` 在 Styles.xaml。
+- 主 Grid 行：0 标题 / 1 页签 / 2 日志(*) / 3 Modbus / 4 S7 / 5 MQTT 主题 / 6 OPC UA / 7 DoIP / 8 发送区 / 9 状态栏。
 
 ## OPC UA 备忘（1.5.374.78，勿升级）
 - 必须钉 `OPCFoundation.NetStandard.Opc.Ua.Client/Server 1.5.374.78`；1.5.375+ 与 2.0.x 是异步重构，API 全变。
@@ -65,6 +65,13 @@ WPF 串口调试助手，对标 UartAssist。net9.0-windows + WPF + MVVM，无�
   一律 `Task.Run(...).GetAwaiter().GetResult()`。
 - 证书在 `%APPDATA%\WPF-UartAssist\pki`，首次启动自动生成；服务端 ns 索引实测 2。
 - OPC UA 不是字节流：该页签隐藏发送区，`Send()` 抛 NotSupported。
+
+## DoIP 备忘（ISO 13400-2）
+- 8 字节头：版本(0x02) + 取反(0xFD) + 负载类型(2) + 长度(4，大端)，PDU 紧随其后。
+- 0x0005 路由激活 → 0x0006 响应（应答码 0x00 已同意）；0x8001 诊断报文（SA/TA + UDS）。
+- 收数据必须**按帧切**：一个 TCP 段可能含多帧，也要处理半帧继续等。
+- `DataReceived` 空实现，只走 `FrameReceived`，否则同一帧记两遍。
+- 车辆识别/存活检查在标准里还涉及 UDP 13400 广播，目前只实现 TCP。
 
 ## MQTTnet 5.x 备忘
 - 类型全在根命名空间 `MQTTnet`；`MqttClientFactory` 建客户端；事件是 `Func<T,Task>`。

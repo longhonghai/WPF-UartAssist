@@ -34,7 +34,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>内置 OPC UA 服务端，独立于客户端存在。</summary>
     private OpcUaServerHost? _opcUaServer;
 
-    /// <summary>当前页签：0=串口，1=TCP/UDP，2=S7，3=MQTT，4=OPC UA。发送与状态栏跟随页签。</summary>
+    /// <summary>DoIP 连接（ISO 13400，TCP 13400）。</summary>
+    private ITransport? _doIpTransport;
+
+    /// <summary>当前页签：0=串口，1=TCP/UDP，2=S7，3=MQTT，4=OPC UA，5=DoIP。发送与状态栏跟随页签。</summary>
     private int _selectedTabIndex;
     private readonly DispatcherTimer _rxFlushTimer;
     private readonly DispatcherTimer _loopSendTimer;
@@ -66,8 +69,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private long _txBytes;
     private double _rxRate;
 
-    /// <summary>各通道（串口/网络/S7/MQTT/OPC UA）的日志行数，状态栏显示当前页签的。</summary>
-    private readonly int[] _rxLinesPerChannel = new int[5];
+    /// <summary>各通道（串口/网络/S7/MQTT/OPC UA/DoIP）的日志行数，状态栏显示当前页签的。</summary>
+    private readonly int[] _rxLinesPerChannel = new int[6];
 
     public MainViewModel()
     {
@@ -77,6 +80,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         S7SettingsModel = _settings.S7.Clone();
         MqttSettingsModel = _settings.Mqtt.Clone();
         OpcUaSettingsModel = _settings.OpcUa.Clone();
+        DoIpSettingsModel = _settings.DoIp.Clone();
+        DoIp = new DoIpViewModel(payload => SendBytes(
+            payload,
+            HexConverter.ToHex(payload[..Math.Min(payload.Length, 32)])));
+
+        Uds = new UdsViewModel(SendUdsOverDoIp);
+
+        // 构造器折叠状态变化时刷新面板可见性
+        DoIp.VisibilityChanged += () => OnPropertyChanged(nameof(ShowDoIpPanel));
 
         // 内存占用显示：先占位为 "--"，后台探测专用工作集计数器后再显示，
         // 避免先显示完整工作集（数值偏大）再跳变
@@ -126,6 +138,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         StartOpcUaServerCommand = new RelayCommand(StartOpcUaServer, () => _opcUaServer?.IsRunning != true);
         StopOpcUaServerCommand = new RelayCommand(StopOpcUaServer, () => _opcUaServer?.IsRunning == true);
         WriteOpcUaVariableCommand = new RelayCommand(WriteOpcUaVariable, () => _opcUaServer?.IsRunning == true);
+        OpenDoIpCommand = new RelayCommand(OpenDoIp, () => _doIpTransport?.IsOpen != true);
+        CloseDoIpCommand = new RelayCommand(CloseDoIp, () => _doIpTransport?.IsOpen == true);
         RefreshPortsCommand = new RelayCommand(RefreshPorts);
         SendCommand = new RelayCommand(Send, () => IsOpen);
         SendFileCommand = new RelayCommand(SendFile, () => IsOpen);
@@ -389,6 +403,105 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     #endregion
 
+    #region DoIP 通讯
+
+    /// <summary>DoIP 网关参数。</summary>
+    public Models.DoIpSettings DoIpSettingsModel { get; }
+
+    /// <summary>DoIP 报文构造器。</summary>
+    public DoIpViewModel DoIp { get; }
+
+    /// <summary>UDS 服务构造器（发出的报文包进 DoIP 0x8001）。</summary>
+    public UdsViewModel Uds { get; }
+
+    public RelayCommand OpenDoIpCommand { get; }
+    public RelayCommand CloseDoIpCommand { get; }
+
+    /// <summary>连接 DoIP 网关（TCP 13400）。</summary>
+    private void OpenDoIp()
+    {
+        if (_doIpTransport?.IsOpen == true)
+        {
+            ShowWarning("已连接", "DoIP 连接已存在，请先断开。");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(DoIpSettingsModel.Host))
+        {
+            ShowWarning("参数无效", "请填写 DoIP 网关地址。");
+            return;
+        }
+
+        if (!int.TryParse(DoIpSettingsModel.Port?.Trim(), out int port) || port is < 1 or > 65535)
+        {
+            ShowWarning("参数无效", "端口应为 1–65535（ISO 13400 默认 13400）。");
+            return;
+        }
+
+        var transport = new DoIpTransport(DoIpSettingsModel.Host.Trim(), port);
+
+        if (OpenTransport(transport, slot: 5, $"已连接 {transport.Description}"))
+        {
+            AppendSystem(LogChannel.DoIp,
+                $"[{NowStamp()}] 提示：先做路由激活（发 0005），再发诊断报文（8001）");
+        }
+    }
+
+    /// <summary>把 UDS 请求包进 DoIP 诊断报文（0x8001）发出。</summary>
+    private void SendUdsOverDoIp(byte[] uds)
+    {
+        if (_doIpTransport?.IsOpen != true)
+        {
+            ShowWarning("未连接", "请先连接 DoIP 网关，再发送 UDS 服务。");
+            return;
+        }
+
+        if (!ModbusRtu.TryParseUshort(DoIp.SourceAddressText, out ushort source))
+        {
+            ShowWarning("参数无效", "DoIP 源地址不正确。");
+            return;
+        }
+
+        if (!ModbusRtu.TryParseUshort(DoIp.TargetAddressText, out ushort target))
+        {
+            ShowWarning("参数无效", "DoIP 目标地址不正确。");
+            return;
+        }
+
+        // 属性 DoIp / Uds 与静态类同名，这里要写全限定名
+        byte[] payload = Services.DoIp.BuildDiagnosticPayload(source, target, uds);
+        byte[] frame = Services.DoIp.BuildFrame(
+            Services.DoIp.DefaultVersion, Services.DoIp.PayloadTypeDiagnostic, payload);
+
+        SendBytes(frame, "UDS " + HexConverter.ToHex(uds));
+    }
+
+    /// <summary>收到一帧 DoIP：解码后写日志。</summary>
+    private void OnDoIpFrame(DoIpFrame frame)
+    {
+        _dispatcher.BeginInvoke(() =>
+        {
+            RxBytes = _doIpTransport?.TotalReceived ?? RxBytes;
+            AppendEntry(
+                LogChannel.DoIp,
+                ShowTimestamp ? $"[{NowStamp()}] " : string.Empty,
+                frame.Describe(),
+                LogKind.Receive);
+
+            // 诊断报文顺带把 UDS 响应翻译成人话
+            if (frame.Uds is { Length: > 0 } uds)
+            {
+                AppendEntry(
+                    LogChannel.DoIp,
+                    "    ",
+                    Services.Uds.DescribeResponse(uds),
+                    LogKind.System);
+            }
+        });
+    }
+
+    #endregion
+
     #region 选中项代理属性
 
     public string SelectedPort
@@ -459,6 +572,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         2 => _s7Transport,
         3 => _mqttTransport,
         4 => _opcUaTransport,
+        5 => _doIpTransport,
         _ => _serialTransport
     };
 
@@ -471,6 +585,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool IsMqttTab => _selectedTabIndex == 3;
 
     public bool IsOpcUaTab => _selectedTabIndex == 4;
+
+    public bool IsDoIpTab => _selectedTabIndex == 5;
+
+    /// <summary>DoIP 构造器面板是否显示：在 DoIP 页签且勾选了构造器。</summary>
+    public bool ShowDoIpPanel => IsDoIpTab && DoIp.IsVisible;
 
     /// <summary>Modbus 构造器可用的页签：串口（RTU）与 TCP/UDP（TCP）。</summary>
     public bool SupportsModbusTab => IsSerialTab || IsNetworkTab;
@@ -494,6 +613,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsS7Tab));
             OnPropertyChanged(nameof(IsMqttTab));
             OnPropertyChanged(nameof(IsOpcUaTab));
+            OnPropertyChanged(nameof(IsDoIpTab));
+            OnPropertyChanged(nameof(ShowDoIpPanel));
             OnPropertyChanged(nameof(SupportsModbusTab));
             OnPropertyChanged(nameof(SendButtonText));
 
@@ -770,7 +891,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event Action<LogChannel>? LogCleared;
 
     /// <summary>各通道独立的纯文本行缓存（供导出与行数统计，有上限，防止长时间运行内存膨胀）。</summary>
-    private readonly Queue<string>[] _logLines = [new(), new(), new(), new(), new()];
+    private readonly Queue<string>[] _logLines = [new(), new(), new(), new(), new(), new()];
 
     public bool HasLogContent => _logLines[(int)CurrentChannel].Count > 0;
 
@@ -1086,6 +1207,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             case 2: OpenS7(); break;
             case 3: OpenMqtt(); break;
             case 4: OpenOpcUa(); break;
+            case 5: OpenDoIp(); break;
             default: OpenPort(); break;
         }
     }
@@ -1099,6 +1221,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             case 2: CloseS7(); break;
             case 3: CloseMqtt(); break;
             case 4: CloseOpcUa(); break;
+            case 5: CloseDoIp(); break;
             default: CloseSerial(); break;
         }
     }
@@ -1728,6 +1851,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             case 4:
                 _opcUaTransport = transport;
                 break;
+            case 5:
+                _doIpTransport = transport;
+                break;
             default:
                 _serialTransport = transport;
                 break;
@@ -1750,6 +1876,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         2 => LogChannel.S7,
         3 => LogChannel.MQTT,
         4 => LogChannel.OpcUa,
+        5 => LogChannel.DoIp,
         _ => LogChannel.Serial
     };
 
@@ -1762,6 +1889,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void CloseMqtt() => CloseTransport(_mqttTransport);
 
     private void CloseOpcUa() => CloseTransport(_opcUaTransport);
+
+    private void CloseDoIp() => CloseTransport(_doIpTransport);
 
     private void CloseTransport(ITransport? transport)
     {
@@ -1803,6 +1932,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(S7PduSizeDisplay));
             }
 
+            if (ReferenceEquals(transport, _doIpTransport))
+            {
+                _doIpTransport = null;
+            }
+
             if (ReferenceEquals(transport, _mqttTransport))
             {
                 _mqttTransport = null;
@@ -1837,6 +1971,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return LogChannel.OpcUa;
         }
 
+        if (ReferenceEquals(transport, _doIpTransport))
+        {
+            return LogChannel.DoIp;
+        }
+
         return LogChannel.Serial;
     }
 
@@ -1846,6 +1985,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         transport.DataReceived += data => OnDataReceived(transport.Tag, data);
         transport.ErrorOccurred += OnTransportError;
         transport.ConnectionStateChanged += connected => OnTransportStateChanged(transport, connected);
+
+        // DoIP 按帧收，逐帧解码后写日志
+        if (transport is DoIpTransport doIp)
+        {
+            doIp.FrameReceived += frame => OnDoIpFrame(frame);
+            doIp.FrameError += message => _dispatcher.BeginInvoke(
+                () => AppendSystem(LogChannel.DoIp, $"[{NowStamp()}] 报文异常：{message}"));
+        }
 
         // 按主题分发的协议（MQTT）额外带主题信息
         if (transport is ITopicTransport topicTransport)
@@ -2076,6 +2223,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         "S7" => LogChannel.S7,
         "MQTT" => LogChannel.MQTT,
         "OPC UA" => LogChannel.OpcUa,
+        "DoIP" => LogChannel.DoIp,
         _ => LogChannel.Network
     };
 
@@ -2633,6 +2781,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         StartOpcUaServerCommand.RaiseCanExecuteChanged();
         StopOpcUaServerCommand.RaiseCanExecuteChanged();
         WriteOpcUaVariableCommand.RaiseCanExecuteChanged();
+        OpenDoIpCommand.RaiseCanExecuteChanged();
+        CloseDoIpCommand.RaiseCanExecuteChanged();
         SendCommand.RaiseCanExecuteChanged();
         SendFileCommand.RaiseCanExecuteChanged();
     }
@@ -2698,6 +2848,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _settings.S7 = S7SettingsModel.Clone();
         _settings.Mqtt = MqttSettingsModel.Clone();
         _settings.OpcUa = OpcUaSettingsModel.Clone();
+        _settings.DoIp = DoIpSettingsModel.Clone();
         SettingsService.Save(_settings);
     }
 
@@ -2740,6 +2891,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _opcUaTransport.Dispose();
             _opcUaTransport = null;
+        }
+
+        if (_doIpTransport is not null)
+        {
+            _doIpTransport.Dispose();
+            _doIpTransport = null;
         }
 
         if (_mqttTransport is not null)

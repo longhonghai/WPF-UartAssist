@@ -14,11 +14,11 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
 
-    /// <summary>每个页签通道一份文档：串口 / TCP·UDP / S7 / MQTT / OPC UA 各自独立记录与显示。</summary>
-    private readonly FlowDocument[] _documents = new FlowDocument[5];
+    /// <summary>每个页签通道一份文档：串口 / TCP·UDP / S7 / MQTT / OPC UA / DoIP 各自独立记录与显示。</summary>
+    private readonly FlowDocument[] _documents = new FlowDocument[6];
 
     /// <summary>各通道不换行时缓存的最宽一行宽度（像素），用于让页宽贴合内容。</summary>
-    private readonly double[] _widestLineWidths = new double[5];
+    private readonly double[] _widestLineWidths = new double[6];
 
     /// <summary>当前显示的通道，与顶部页签索引一致。</summary>
     private LogChannel CurrentChannel => (LogChannel)_viewModel.SelectedTabIndex;
