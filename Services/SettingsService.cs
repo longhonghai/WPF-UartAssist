@@ -12,8 +12,8 @@ public sealed class AppSettings
     /// <summary>默认按 ASCII 发送（串口设备通用编码）。</summary>
     public string EncodingName { get; set; } = "ASCII";
 
-    /// <summary>界面主题：Dark / Light。</summary>
-    public string Theme { get; set; } = ThemeManager.Dark;
+    /// <summary>界面主题：Light / Dark，默认亮色。</summary>
+    public string Theme { get; set; } = ThemeManager.Light;
 
     /// <summary>TCP/UDP 参数与上次使用的通讯方式。</summary>
     public NetworkSettings Network { get; set; } = new();

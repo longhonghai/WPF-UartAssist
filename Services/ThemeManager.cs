@@ -14,14 +14,14 @@ public static class ThemeManager
 
     private static readonly string[] PaletteFiles = [Dark + ".xaml", Light + ".xaml"];
 
-    /// <summary>当前主题，取值 <see cref="Dark"/> 或 <see cref="Light"/>。</summary>
-    public static string Current { get; private set; } = Dark;
+    /// <summary>当前主题，取值 <see cref="Dark"/> 或 <see cref="Light"/>。默认亮色。</summary>
+    public static string Current { get; private set; } = Light;
 
     public static bool IsDark => Current == Dark;
 
-    /// <summary>规范化主题名，非法值一律回落到暗色。</summary>
+    /// <summary>规范化主题名，非法值一律回落到亮色（默认主题）。</summary>
     public static string Normalize(string? theme)
-        => string.Equals(theme, Light, StringComparison.OrdinalIgnoreCase) ? Light : Dark;
+        => string.Equals(theme, Dark, StringComparison.OrdinalIgnoreCase) ? Dark : Light;
 
     public static string Toggle(string? theme)
         => Normalize(theme) == Dark ? Light : Dark;
