@@ -51,6 +51,118 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!--
+            ==================== 液态玻璃背景 ====================
+            只在 Glass 主题下可见。三团径向光斑缓慢漂移，配合半透明的面板背景，
+            形成玻璃后面有色光流动的效果；Light/Dark 主题下整层折叠，不产生渲染开销。
+        -->
+        <Grid Grid.RowSpan="10" IsHitTestVisible="False" ClipToBounds="True">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsLiquidGlass}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#FF070C16" Offset="0" />
+                    <GradientStop Color="#FF0C1326" Offset="0.45" />
+                    <GradientStop Color="#FF05070F" Offset="1" />
+                </LinearGradientBrush>
+            </Grid.Background>
+
+            <!-- 光斑一：左上青蓝 -->
+            <Ellipse x:Name="GlassBlobCyan" Width="820" Height="820"
+                     HorizontalAlignment="Left" VerticalAlignment="Top"
+                     Margin="-180,-260,0,0">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#B34FD6FF" Offset="0" />
+                        <GradientStop Color="#5C4FD6FF" Offset="0.5" />
+                        <GradientStop Color="#004FD6FF" Offset="1" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.RenderTransform>
+                    <TranslateTransform />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+
+            <!-- 光斑二：右侧紫罗兰 -->
+            <Ellipse x:Name="GlassBlobViolet" Width="760" Height="760"
+                     HorizontalAlignment="Right" VerticalAlignment="Top"
+                     Margin="0,-140,-180,0">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#A67B6BFF" Offset="0" />
+                        <GradientStop Color="#477B6BFF" Offset="0.5" />
+                        <GradientStop Color="#007B6BFF" Offset="1" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.RenderTransform>
+                    <TranslateTransform />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+
+            <!-- 光斑三：底部青绿 -->
+            <Ellipse x:Name="GlassBlobMint" Width="900" Height="660"
+                     HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                     Margin="0,0,0,-300">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#8C3DFFC0" Offset="0" />
+                        <GradientStop Color="#333DFFC0" Offset="0.55" />
+                        <GradientStop Color="#003DFFC0" Offset="1" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.RenderTransform>
+                    <TranslateTransform />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+
+            <!-- 顶部整片玻璃反光：模拟光线从窗口上沿掠过 -->
+            <Rectangle VerticalAlignment="Top" Height="240">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#1FFFFFFF" Offset="0" />
+                        <GradientStop Color="#08FFFFFF" Offset="0.55" />
+                        <GradientStop Color="#00FFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+
+            <Grid.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                    <BeginStoryboard>
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <DoubleAnimation Storyboard.TargetName="GlassBlobCyan"
+                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                             From="-70" To="110" Duration="0:0:17" />
+                            <DoubleAnimation Storyboard.TargetName="GlassBlobCyan"
+                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                             From="-40" To="90" Duration="0:0:23" />
+                            <DoubleAnimation Storyboard.TargetName="GlassBlobViolet"
+                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                             From="60" To="-120" Duration="0:0:21" />
+                            <DoubleAnimation Storyboard.TargetName="GlassBlobViolet"
+                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                             From="30" To="140" Duration="0:0:27" />
+                            <DoubleAnimation Storyboard.TargetName="GlassBlobMint"
+                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                             From="-100" To="130" Duration="0:0:25" />
+                            <DoubleAnimation Storyboard.TargetName="GlassBlobMint"
+                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                             From="40" To="-80" Duration="0:0:19" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </Grid.Triggers>
+        </Grid>
+
         <!-- ==================== 标题栏 ==================== -->
         <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" Padding="16,10">
             <Grid>

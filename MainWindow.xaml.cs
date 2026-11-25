@@ -6,6 +6,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using WPF_UartAssist.Models;
+using WPF_UartAssist.Services;
 using WPF_UartAssist.ViewModels;
 
 namespace WPF_UartAssist;
@@ -77,6 +78,8 @@ public partial class MainWindow : Window
     /// <summary>主题切换：重取日志配色，并把所有通道已有日志行按新配色刷一遍。</summary>
     private void OnThemeChanged()
     {
+        // 系统标题栏不跟着 WPF 资源走，需要单独通知 DWM
+        WindowTheme.SetDarkTitleBar(this, ThemeManager.Current != ThemeManager.Light);
         RefreshLogBrushes();
 
         foreach (FlowDocument document in _documents)
@@ -346,6 +349,13 @@ public partial class MainWindow : Window
     }
 
     #endregion
+
+    /// <summary>句柄创建后立即套用标题栏明暗，避免启动时先闪一下白色标题栏。</summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        WindowTheme.SetDarkTitleBar(this, ThemeManager.Current != ThemeManager.Light);
+    }
 
     protected override void OnClosing(CancelEventArgs e)
     {

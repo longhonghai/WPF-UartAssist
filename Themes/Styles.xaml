@@ -61,7 +61,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4"
+                            CornerRadius="{DynamicResource ControlCornerRadius}"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
@@ -94,7 +94,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bd"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="4"
+                            CornerRadius="{DynamicResource ControlCornerRadius}"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
@@ -142,7 +142,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4">
+                            CornerRadius="{DynamicResource ControlCornerRadius}">
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="Center"
@@ -187,7 +187,7 @@
                                             Background="{TemplateBinding Background}"
                                             BorderBrush="{TemplateBinding BorderBrush}"
                                             BorderThickness="{TemplateBinding BorderThickness}"
-                                            CornerRadius="4">
+                                            CornerRadius="{DynamicResource ControlCornerRadius}">
                                         <Path HorizontalAlignment="Right"
                                               VerticalAlignment="Center"
                                               Margin="0,0,9,0"
@@ -246,7 +246,7 @@
                                     Background="{DynamicResource PanelBrush}"
                                     BorderBrush="{DynamicResource BorderBrushSoft}"
                                     BorderThickness="1"
-                                    CornerRadius="4"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}"
                                     MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
                                 <ScrollViewer MaxHeight="260" Margin="4" VerticalScrollBarVisibility="Auto">
                                     <ItemsPresenter />
@@ -352,11 +352,12 @@
     </Style>
 
     <!-- ============ 面板 ============ -->
+    <!-- 圆角与描边走主题资源：液态玻璃下换成更大的圆角和亮边高光 -->
     <Style x:Key="PanelBorder" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushSoft}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PanelBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="CornerRadius" Value="{DynamicResource PanelCornerRadius}" />
     </Style>
 
     <Style x:Key="Separator" TargetType="Border">

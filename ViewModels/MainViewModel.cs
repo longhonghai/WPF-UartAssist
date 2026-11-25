@@ -1166,10 +1166,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>主题切换后触发，供界面重新着色已有日志行。</summary>
     public event Action? ThemeChanged;
 
-    /// <summary>按钮字形用 Segoe MDL2 Assets：暗色显示月亮，亮色显示太阳。</summary>
-    public string ThemeGlyph => ThemeManager.IsDark ? "\uE708" : "\uE706";
+    /// <summary>
+    /// 按钮字形用 Segoe MDL2 Assets：暗色显示月亮、亮色显示太阳、液态玻璃显示调色板。
+    /// </summary>
+    public string ThemeGlyph => ThemeManager.Current switch
+    {
+        ThemeManager.Dark => "\uE708",
+        ThemeManager.Glass => "\uE790",
+        _ => "\uE706"
+    };
 
-    public string ThemeToolTip => ThemeManager.IsDark ? "切换到亮色主题" : "切换到暗色主题";
+    /// <summary>悬停提示：当前主题 + 下一次点击会切到的主题。</summary>
+    public string ThemeToolTip =>
+        $"当前：{ThemeManager.DisplayName(ThemeManager.Current)}，点击切换到" +
+        ThemeManager.DisplayName(ThemeManager.Next(ThemeManager.Current));
+
+    /// <summary>液态玻璃主题下才显示背景光斑层。</summary>
+    public bool IsLiquidGlass => ThemeManager.IsGlass;
 
     private void ToggleTheme()
     {
@@ -1179,6 +1192,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(ThemeGlyph));
         OnPropertyChanged(nameof(ThemeToolTip));
+        OnPropertyChanged(nameof(IsLiquidGlass));
         ThemeChanged?.Invoke();
     }
 

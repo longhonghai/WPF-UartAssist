@@ -6,25 +6,53 @@ namespace WPF_UartAssist.Services;
 /// 运行时换肤。做法是替换 Application.Resources 里的「调色板字典」，
 /// 样式字典只加载一次、内部用 DynamicResource 引用颜色，
 /// 所以替换后所有控件立即变色，不需要重建窗口。
+/// 目前支持 亮色 / 暗色 / 液态玻璃 三套主题，按此顺序循环切换。
 /// </summary>
 public static class ThemeManager
 {
-    public const string Dark = "Dark";
     public const string Light = "Light";
+    public const string Dark = "Dark";
+    public const string Glass = "Glass";
 
-    private static readonly string[] PaletteFiles = [Dark + ".xaml", Light + ".xaml"];
+    private static readonly string[] PaletteFiles = [Light + ".xaml", Dark + ".xaml", Glass + ".xaml"];
 
-    /// <summary>当前主题，取值 <see cref="Dark"/> 或 <see cref="Light"/>。默认亮色。</summary>
+    /// <summary>当前主题，取值 Light / Dark / Glass。默认亮色。</summary>
     public static string Current { get; private set; } = Light;
 
     public static bool IsDark => Current == Dark;
 
+    /// <summary>是否处于液态玻璃主题（界面据此显示背景光斑层）。</summary>
+    public static bool IsGlass => Current == Glass;
+
     /// <summary>规范化主题名，非法值一律回落到亮色（默认主题）。</summary>
     public static string Normalize(string? theme)
-        => string.Equals(theme, Dark, StringComparison.OrdinalIgnoreCase) ? Dark : Light;
+    {
+        if (string.Equals(theme, Dark, StringComparison.OrdinalIgnoreCase))
+        {
+            return Dark;
+        }
 
-    public static string Toggle(string? theme)
-        => Normalize(theme) == Dark ? Light : Dark;
+        return string.Equals(theme, Glass, StringComparison.OrdinalIgnoreCase) ? Glass : Light;
+    }
+
+    /// <summary>下一个主题：亮色 → 暗色 → 液态玻璃 → 亮色。</summary>
+    public static string Next(string? theme) => Normalize(theme) switch
+    {
+        Dark => Glass,
+        Glass => Light,
+        _ => Dark
+    };
+
+    /// <summary>沿主题环切换一格（保留旧名称，等价于 <see cref="Next"/>）。</summary>
+    public static string Toggle(string? theme) => Next(theme);
+
+    /// <summary>给界面显示的中文名。</summary>
+    public static string DisplayName(string? theme) => Normalize(theme) switch
+    {
+        Dark => "暗色",
+        Glass => "液态玻璃",
+        _ => "亮色"
+    };
 
     /// <summary>应用主题。可在窗口创建前调用，也可运行时调用。</summary>
     public static void Apply(string? theme)

@@ -62,4 +62,9 @@
     <SolidColorBrush x:Key="LogSystemBrush" Color="{StaticResource LogSystemColor}" />
     <SolidColorBrush x:Key="LogPrefixBrush" Color="{StaticResource LogPrefixColor}" />
 
+    <!-- 玻璃质感专用（亮色下退化为普通描边与圆角，保证键与 Glass.xaml 一致） -->
+    <SolidColorBrush x:Key="PanelBorderBrush" Color="{StaticResource BorderColor}" />
+    <CornerRadius x:Key="PanelCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="ControlCornerRadius">4</CornerRadius>
+
 </ResourceDictionary>
